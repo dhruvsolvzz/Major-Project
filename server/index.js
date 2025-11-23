@@ -1,0 +1,46 @@
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+const dotenv = require('dotenv');
+const path = require('path');
+
+dotenv.config();
+
+const app = express();
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// MongoDB Connection
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/redbridge')
+.then(() => {
+  console.log('✅ MongoDB Atlas Connected Successfully');
+  console.log('📊 Database: redbridge');
+  // Create geospatial indexes
+  require('./models/Donor').createIndexes();
+  require('./models/Needer').createIndexes();
+  console.log('🗺️  Geospatial indexes created');
+})
+.catch(err => {
+  console.error('❌ MongoDB Connection Error:', err.message);
+  process.exit(1);
+});
+
+// Routes
+app.use('/api/donors', require('./routes/donorRoutes'));
+app.use('/api/needers', require('./routes/neederRoutes'));
+app.use('/api/match', require('./routes/matchRoutes'));
+app.use('/api/ocr', require('./routes/ocrRoutes'));
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'OK', message: 'RedBridge API is running' });
+});
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+});

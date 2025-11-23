@@ -1,0 +1,324 @@
+class AadhaarValidator {
+  
+  // Validate Aadhaar number format
+  validateAadhaarNumber(aadhaarNumber, strictMode = false) {
+    const issues = [];
+    const warnings = [];
+    
+    // Remove spaces and hyphens
+    const cleaned = aadhaarNumber.replace(/[\s\-]/g, '');
+    
+    // Check length
+    if (cleaned.length !== 12) {
+      issues.push('Aadhaar must be 12 digits');
+    }
+    
+    // Check if all digits
+    if (!/^\d{12}$/.test(cleaned)) {
+      issues.push('Aadhaar must contain only digits');
+    }
+    
+    // Check for repeated digits (simple fraud detection)
+    if (/^(\d)\1{11}$/.test(cleaned)) {
+      issues.push('Invalid Aadhaar - all digits are same');
+    }
+    
+    // Check for sequential digits
+    if (cleaned === '123456789012' || cleaned === '012345678901') {
+      issues.push('Invalid Aadhaar - sequential pattern detected');
+    }
+    
+    // Verhoeff algorithm check (only in strict mode for production)
+    if (strictMode && cleaned.length === 12 && /^\d{12}$/.test(cleaned)) {
+      if (!this.verhoeffCheck(cleaned)) {
+        warnings.push('Aadhaar checksum validation failed (may be test data)');
+      }
+    }
+    
+    return {
+      isValid: issues.length === 0,
+      issues: issues,
+      warnings: warnings,
+      cleanedNumber: cleaned
+    };
+  }
+  
+  // Verhoeff algorithm for Aadhaar validation
+  verhoeffCheck(num) {
+    const d = [
+      [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+      [1, 2, 3, 4, 0, 6, 7, 8, 9, 5],
+      [2, 3, 4, 0, 1, 7, 8, 9, 5, 6],
+      [3, 4, 0, 1, 2, 8, 9, 5, 6, 7],
+      [4, 0, 1, 2, 3, 9, 5, 6, 7, 8],
+      [5, 9, 8, 7, 6, 0, 4, 3, 2, 1],
+      [6, 5, 9, 8, 7, 1, 0, 4, 3, 2],
+      [7, 6, 5, 9, 8, 2, 1, 0, 4, 3],
+      [8, 7, 6, 5, 9, 3, 2, 1, 0, 4],
+      [9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
+    ];
+    
+    const p = [
+      [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+      [1, 5, 7, 6, 2, 8, 3, 0, 9, 4],
+      [5, 8, 0, 3, 7, 9, 6, 1, 4, 2],
+      [8, 9, 1, 6, 0, 4, 3, 5, 2, 7],
+      [9, 4, 5, 3, 1, 2, 6, 8, 7, 0],
+      [4, 2, 8, 6, 5, 7, 3, 9, 0, 1],
+      [2, 7, 9, 3, 8, 0, 6, 4, 1, 5],
+      [7, 0, 4, 6, 9, 1, 3, 2, 5, 8]
+    ];
+    
+    let c = 0;
+    const myArray = num.split('').reverse();
+    
+    for (let i = 0; i < myArray.length; i++) {
+      c = d[c][p[(i % 8)][parseInt(myArray[i])]];
+    }
+    
+    return c === 0;
+  }
+  
+  // Extract Aadhaar number from text
+  extractAadhaarNumber(text, strictMode = false) {
+    const patterns = [
+      /\b(\d{4}\s?\d{4}\s?\d{4})\b/g,
+      /\b(\d{12})\b/g
+    ];
+    
+    const foundNumbers = [];
+    
+    for (const pattern of patterns) {
+      const matches = text.match(pattern);
+      if (matches) {
+        for (const match of matches) {
+          const validation = this.validateAadhaarNumber(match, strictMode);
+          if (validation.isValid) {
+            return validation.cleanedNumber;
+          }
+          // In non-strict mode, collect all 12-digit numbers
+          if (!strictMode && validation.cleanedNumber.length === 12) {
+            foundNumbers.push({
+              number: validation.cleanedNumber,
+              issues: validation.issues
+            });
+          }
+        }
+      }
+    }
+    
+    // In non-strict mode, return the first 12-digit number even if it has warnings
+    if (!strictMode && foundNumbers.length > 0) {
+      console.log('⚠️ Using first found 12-digit number (non-strict mode):', foundNumbers[0].number);
+      return foundNumbers[0].number;
+    }
+    
+    return null;
+  }
+  
+  // Extract name from Aadhaar
+  extractName(text) {
+    console.log('🔍 Extracting name from text...');
+    
+    const patterns = [
+      // Pattern for name before DOB (common in Aadhaar)
+      /([A-Z][a-z]+\s+[A-Z][a-z]+)\s+(?:DOB|Date\s+of\s+Birth|जन्म\s+तिथि)/i,
+      // Pattern for "To" field followed by name
+      /To\s*[:\-]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)/i,
+      // Pattern for standard name field
+      /(?:NAME|NAME\s*OF\s*HOLDER)\s*[:\-]?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)/i,
+      // Pattern for name before S/O, D/O, W/O
+      /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s+(?:S\/O|D\/O|W\/O)/i,
+      // Pattern for name before MALE/FEMALE
+      /([A-Z][a-z]+\s+[A-Z][a-z]+)\s+(?:MALE|FEMALE|पुरुष)/i,
+      // Pattern for capitalized names (2-4 words) after Hindi text
+      /(?:गर्ग|कुमार|शर्मा|सिंह)\s+([A-Z][a-z]+\s+[A-Z][a-z]+)/i,
+      // Pattern for capitalized names (2-4 words)
+      /\b([A-Z][a-z]{2,}\s+[A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})?)\b/
+    ];
+    
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      if (match) {
+        let name = match[1].trim();
+        
+        // Clean up the name
+        name = name.replace(/\s+/g, ' '); // Remove extra spaces
+        
+        console.log('Found potential name:', name);
+        
+        // Validate name length and format
+        if (name.length >= 4 && name.length <= 50) {
+          // Check if it's not a common non-name word
+          const excludeWords = ['GOVERNMENT', 'INDIA', 'AADHAAR', 'AUTHORITY', 'IDENTIFICATION', 'UNIQUE', 'ENROLLMENT', 'MALE', 'FEMALE', 'ISSUED', 'PROOF', 'IDENTITY', 'CITIZENSHIP'];
+          if (!excludeWords.some(word => name.toUpperCase().includes(word))) {
+            console.log('✅ Valid name found:', name);
+            return name;
+          }
+        }
+      }
+    }
+    
+    console.log('❌ No valid name found');
+    return null;
+  }
+  
+  // Extract DOB from Aadhaar
+  extractDOB(text) {
+    const patterns = [
+      /(?:DOB|DATE\s*OF\s*BIRTH|BIRTH\s*DATE|D\.O\.B\.?)\s*[:\-]?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
+      /(?:YEAR\s*OF\s*BIRTH|YOB)\s*[:\-]?\s*(\d{4})/i,
+      // Pattern for date in format DD/MM/YYYY anywhere in text
+      /\b(\d{2}[\/\-\.]\d{2}[\/\-\.]\d{4})\b/
+    ];
+    
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      if (match) {
+        return match[1];
+      }
+    }
+    
+    return null;
+  }
+  
+  // Calculate age from DOB
+  calculateAge(dob) {
+    if (!dob) return null;
+    
+    try {
+      // Parse date in DD/MM/YYYY or DD-MM-YYYY format
+      const parts = dob.split(/[\/\-\.]/);
+      if (parts.length === 3) {
+        const day = parseInt(parts[0]);
+        const month = parseInt(parts[1]) - 1; // Month is 0-indexed
+        const year = parseInt(parts[2]);
+        
+        // Handle 2-digit years
+        const fullYear = year < 100 ? (year > 50 ? 1900 + year : 2000 + year) : year;
+        
+        const birthDate = new Date(fullYear, month, day);
+        const today = new Date();
+        
+        let age = today.getFullYear() - birthDate.getFullYear();
+        const monthDiff = today.getMonth() - birthDate.getMonth();
+        
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+          age--;
+        }
+        
+        return age > 0 && age < 120 ? age : null;
+      }
+    } catch (error) {
+      console.error('Error calculating age:', error);
+    }
+    
+    return null;
+  }
+  
+  // Extract gender from Aadhaar
+  extractGender(text) {
+    const cleanText = text.toUpperCase();
+    
+    if (/\bMALE\b/.test(cleanText) && !/\bFEMALE\b/.test(cleanText)) {
+      return 'Male';
+    } else if (/\bFEMALE\b/.test(cleanText)) {
+      return 'Female';
+    }
+    
+    return null;
+  }
+  
+  // Validate Aadhaar document authenticity
+  validateDocument(text, extractedData, strictMode = false) {
+    const issues = [];
+    const warnings = [];
+    
+    // Check text length
+    if (text.length < 30) {
+      if (strictMode) {
+        issues.push('Document text too short');
+      } else {
+        warnings.push('Document text too short');
+      }
+    }
+    
+    // Check for Aadhaar number (CRITICAL - always required)
+    if (!extractedData.aadhaarNumber) {
+      issues.push('No valid Aadhaar number found');
+    }
+    
+    // Check for name (relaxed in dev mode)
+    if (!extractedData.name) {
+      if (strictMode) {
+        issues.push('Name not found');
+      } else {
+        warnings.push('Name not found in document');
+      }
+    }
+    
+    // Check for DOB or Gender (relaxed in dev mode)
+    if (!extractedData.dob && !extractedData.gender) {
+      if (strictMode) {
+        issues.push('Missing DOB and Gender - document may be incomplete');
+      } else {
+        warnings.push('Missing DOB and Gender - document may be incomplete');
+      }
+    }
+    
+    // Check for Aadhaar-specific keywords (relaxed in dev mode)
+    const aadhaarKeywords = ['AADHAAR', 'AADHAR', 'UIDAI', 'GOVERNMENT OF INDIA', 'GOVERNMENT', 'INDIA'];
+    const hasKeywords = aadhaarKeywords.some(keyword => text.toUpperCase().includes(keyword));
+    if (!hasKeywords) {
+      if (strictMode) {
+        issues.push('Missing Aadhaar-specific keywords');
+      } else {
+        warnings.push('Missing Aadhaar-specific keywords');
+      }
+    }
+    
+    // Check for blur (warning only)
+    if (text.length < 100 && extractedData.aadhaarNumber) {
+      warnings.push('Document may be blurry or low quality');
+    }
+    
+    return {
+      isValid: issues.length === 0,
+      issues: issues,
+      warnings: warnings,
+      confidence: Math.max(0, 100 - (issues.length * 20) - (warnings.length * 5))
+    };
+  }
+  
+  // Main parse method
+  parse(text, strictMode = false) {
+    const dob = this.extractDOB(text);
+    const age = this.calculateAge(dob);
+    
+    const extracted = {
+      aadhaarNumber: this.extractAadhaarNumber(text, strictMode),
+      name: this.extractName(text),
+      dob: dob,
+      age: age,
+      gender: this.extractGender(text)
+    };
+    
+    const validation = this.validateDocument(text, extracted, strictMode);
+    
+    console.log('📋 Extracted Aadhaar data:', {
+      number: extracted.aadhaarNumber,
+      name: extracted.name,
+      dob: extracted.dob,
+      age: extracted.age,
+      gender: extracted.gender
+    });
+    
+    return {
+      ...extracted,
+      validation,
+      rawText: text
+    };
+  }
+}
+
+module.exports = new AadhaarValidator();
