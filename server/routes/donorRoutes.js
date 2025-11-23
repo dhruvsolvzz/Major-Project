@@ -100,12 +100,13 @@ router.post('/preview', upload.fields([
     if (req.files.bloodReport) {
       try {
         const bloodReportPath = req.files.bloodReport[0].path;
-        bloodReportData = await aiExtractor.extractBloodReportDataFromImage(bloodReportPath);
+        bloodReportData = await aiExtractor.extractBloodReport(bloodReportPath);
         console.log('Blood report extracted:', bloodReportData);
       } catch (error) {
         console.error('Blood report preview error:', error.message);
         // Fallback to just blood group extraction
         try {
+          const bloodReportPath = req.files.bloodReport[0].path;
           const bloodResult = await aiExtractor.extractBloodGroup(bloodReportPath);
           bloodReportData = {
             bloodGroup: bloodResult.bloodGroup,
@@ -114,6 +115,7 @@ router.post('/preview', upload.fields([
             gender: null,
             method: bloodResult.method
           };
+          console.log('Blood group fallback extracted:', bloodReportData);
         } catch (fallbackError) {
           console.error('Blood group fallback error:', fallbackError.message);
         }

@@ -46,6 +46,14 @@ const NeederRegistration = () => {
   // Aadhaar validation
   const [aadhaarData, setAadhaarData] = useState(null);
   const [validationErrors, setValidationErrors] = useState([]);
+  
+  // Extracted data preview
+  const [extractedData, setExtractedData] = useState({
+    bloodGroup: null,
+    aadhaarNumber: null,
+    extractionMethod: null,
+    showPreview: false
+  });
 
   // Auto-extract and fill form from Aadhaar
   const autoExtractFromAadhaar = async (file) => {
@@ -89,6 +97,63 @@ const NeederRegistration = () => {
       if (autoFillStatus.isExtracting) {
         setAutoFillStatus({ isExtracting: false, isComplete: false, extractedFields: [] });
       }
+    }
+  };
+
+  // Preview extraction before submission
+  const previewExtraction = async (aadhaarFileToUse, bloodReportFileToUse) => {
+    const aadhaar = aadhaarFileToUse || aadhaarFile;
+    const bloodReport = bloodReportFileToUse || bloodReportFile;
+    
+    if (!aadhaar) {
+      console.log('Preview skipped - missing aadhaar file');
+      return;
+    }
+
+    try {
+      console.log('🔍 Starting preview extraction...', { 
+        hasAadhaar: !!aadhaar, 
+        hasBloodReport: !!bloodReport 
+      });
+      setExtractedData(prev => ({ ...prev, showPreview: true }));
+      
+      const formDataPreview = new FormData();
+      formDataPreview.append('aadhaar', aadhaar);
+      
+      if (bloodReport) {
+        formDataPreview.append('bloodReport', bloodReport);
+        console.log('📄 Blood report added to preview');
+      }
+
+      // Call preview endpoint
+      const response = await fetch('http://localhost:5000/api/needers/preview', {
+        method: 'POST',
+        body: formDataPreview
+      });
+
+      const data = await response.json();
+      console.log('📊 Preview response:', data);
+      
+      if (data.success) {
+        setExtractedData({
+          bloodGroup: data.bloodGroup,
+          aadhaarNumber: data.aadhaarNumber,
+          aadhaarName: data.aadhaarName,
+          aadhaarAge: data.aadhaarAge,
+          reportName: data.reportName,
+          reportAge: data.reportAge,
+          extractionMethod: data.method,
+          validation: data.validation,
+          warnings: data.warnings || [],
+          isValid: data.isValid,
+          showPreview: true
+        });
+        console.log('✅ Preview data set:', { bloodGroup: data.bloodGroup, aadhaarName: data.aadhaarName });
+      } else {
+        console.error('❌ Preview failed:', data.error);
+      }
+    } catch (error) {
+      console.error('❌ Preview error:', error);
     }
   };
 
@@ -483,6 +548,68 @@ const NeederRegistration = () => {
               </div>
             </div>
 
+          </div>
+
+          <div className="mt-6 space-y-6">
+            <h3 className="text-lg font-semibold text-slate-900 border-b border-slate-200 pb-3">
+              Login Credentials
+            </h3>
+            
+            <div className="bg-do-blue-50 border-l-4 border-do-blue-500 p-4 rounded-r-lg">
+              <p className="text-sm text-do-blue-800">
+                <svg className="inline h-4 w-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                </svg>
+                <strong>Login Info:</strong> Your Aadhaar number (extracted from card) will be your username. Create a password below.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  <svg className="inline mr-2 h-4 w-4 text-do-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                  </svg>
+                  Create Password *
+                </label>
+                <input
+                  type="password"
+                  name="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  required
+                  minLength="6"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-do-blue-500 focus:border-do-blue-500 transition-all duration-200"
+                  placeholder="Minimum 6 characters"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  <svg className="inline mr-2 h-4 w-4 text-do-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                  </svg>
+                  Confirm Password *
+                </label>
+                <input
+                  type="password"
+                  name="confirmPassword"
+                  value={formData.confirmPassword}
+                  onChange={handleChange}
+                  required
+                  minLength="6"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-do-blue-500 focus:border-do-blue-500 transition-all duration-200"
+                  placeholder="Re-enter password"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-8 space-y-6">
+            <h3 className="text-lg font-semibold text-slate-900 border-b border-slate-200 pb-3">
+              Blood Group & Urgency
+            </h3>
+            
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">
                 <svg className="inline mr-2 h-4 w-4 text-cf-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -503,12 +630,6 @@ const NeederRegistration = () => {
                 <option value="Critical">Critical - Immediate</option>
               </select>
             </div>
-          </div>
-
-          <div className="mt-8 space-y-6">
-            <h3 className="text-lg font-semibold text-slate-900 border-b border-slate-200 pb-3">
-              Blood Group Information
-            </h3>
 
             <div className="bg-cf-orange-50 border-l-4 border-cf-orange-500 p-4 rounded-r-lg">
               <p className="text-sm text-cf-orange-800">
@@ -540,6 +661,10 @@ const NeederRegistration = () => {
                   onChange={(e) => {
                     const file = e.target.files[0];
                     setBloodReportFile(file);
+                    // Trigger preview if aadhaar already uploaded
+                    if (file && aadhaarFile) {
+                      setTimeout(() => previewExtraction(aadhaarFile, file), 500);
+                    }
                   }}
                 />
                 {bloodReportFile && (
@@ -578,62 +703,153 @@ const NeederRegistration = () => {
                 </select>
               </div>
             )}
-          </div>
-
-          <div className="mt-6 space-y-6">
-            <h3 className="text-lg font-semibold text-slate-900 border-b border-slate-200 pb-3">
-              Login Credentials
-            </h3>
             
-            <div className="bg-cf-orange-50 border-l-4 border-cf-orange-500 p-4 rounded-r-lg">
-              <p className="text-sm text-cf-orange-800">
-                <svg className="inline h-4 w-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+            {/* Preview Button */}
+            {aadhaarFile && bloodReportFile && !useManualBloodGroup && (
+              <button
+                type="button"
+                onClick={previewExtraction}
+                className="mt-4 px-4 py-2 bg-do-blue-600 text-white rounded-lg hover:bg-do-blue-700 transition-all text-sm font-semibold shadow-do flex items-center"
+              >
+                <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                 </svg>
-                <strong>Login Info:</strong> Your Aadhaar number (extracted from card) will be your username. Create a password below.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
-                  <svg className="inline mr-2 h-4 w-4 text-cf-orange-500" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-                  </svg>
-                  Create Password *
-                </label>
-                <input
-                  type="password"
-                  name="password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  required
-                  minLength="6"
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-cf-orange-500 focus:border-cf-orange-500 transition-all duration-200"
-                  placeholder="Minimum 6 characters"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">
-                  <svg className="inline mr-2 h-4 w-4 text-cf-orange-500" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-                  </svg>
-                  Confirm Password *
-                </label>
-                <input
-                  type="password"
-                  name="confirmPassword"
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                  required
-                  minLength="6"
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-cf-orange-500 focus:border-cf-orange-500 transition-all duration-200"
-                  placeholder="Re-enter password"
-                />
-              </div>
-            </div>
+                Preview Extraction
+              </button>
+            )}
           </div>
+
+          {/* Extraction Preview */}
+          {extractedData.showPreview && (extractedData.bloodGroup || extractedData.aadhaarNumber) && (
+            <div className={`mt-6 p-6 rounded-xl border-2 shadow-soft ${
+              extractedData.isValid 
+                ? 'bg-gradient-to-br from-green-50 to-emerald-50 border-green-300' 
+                : 'bg-gradient-to-br from-yellow-50 to-orange-50 border-yellow-300'
+            }`}>
+              <div className="flex items-center mb-4">
+                {extractedData.isValid ? (
+                  <svg className="h-6 w-6 text-green-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg className="h-6 w-6 text-yellow-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                )}
+                <h3 className={`text-lg font-bold ${extractedData.isValid ? 'text-green-900' : 'text-yellow-900'}`}>
+                  AI Extracted Information {extractedData.isValid ? '✓' : '⚠️'}
+                </h3>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                {/* Aadhaar Card Data */}
+                {extractedData.aadhaarNumber && (
+                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-5 rounded-xl border-2 border-blue-300 shadow-md">
+                    <div className="flex items-center mb-3">
+                      <svg className="h-5 w-5 text-blue-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 2a1 1 0 00-1 1v1a1 1 0 002 0V3a1 1 0 00-1-1zM4 4h3a3 3 0 006 0h3a2 2 0 012 2v9a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2zm2.5 7a1.5 1.5 0 100-3 1.5 1.5 0 000 3zm2.45 4a2.5 2.5 0 10-4.9 0h4.9zM12 9a1 1 0 100 2h3a1 1 0 100-2h-3zm-1 4a1 1 0 011-1h2a1 1 0 110 2h-2a1 1 0 01-1-1z" clipRule="evenodd" />
+                      </svg>
+                      <p className="text-xs font-bold text-blue-700 uppercase tracking-wide">From Aadhaar Card</p>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="bg-white/70 p-3 rounded-lg">
+                        <p className="text-xs text-blue-600 font-semibold mb-1">Aadhaar Number</p>
+                        <p className="text-lg font-bold text-slate-900">
+                          {extractedData.aadhaarNumber.replace(/(\d{4})(\d{4})(\d{4})/, '$1 $2 $3')}
+                        </p>
+                      </div>
+                      {extractedData.aadhaarName && (
+                        <div className="bg-white/70 p-3 rounded-lg">
+                          <p className="text-xs text-blue-600 font-semibold mb-1">Extracted Name</p>
+                          <p className="text-base font-bold text-slate-900">{extractedData.aadhaarName}</p>
+                        </div>
+                      )}
+                      {extractedData.aadhaarAge && (
+                        <div className="bg-white/70 p-3 rounded-lg">
+                          <p className="text-xs text-blue-600 font-semibold mb-1">Age</p>
+                          <p className="text-base font-bold text-slate-900">{extractedData.aadhaarAge} years</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Blood Report Data */}
+                {extractedData.showPreview && bloodReportFile && !useManualBloodGroup && (
+                  <div className={`p-5 rounded-xl border-2 shadow-md ${
+                    extractedData.bloodGroup 
+                      ? 'bg-gradient-to-br from-red-50 to-pink-50 border-red-300'
+                      : 'bg-gradient-to-br from-yellow-50 to-orange-50 border-yellow-300'
+                  }`}>
+                    <div className="flex items-center mb-3">
+                      <svg className={`h-5 w-5 mr-2 ${extractedData.bloodGroup ? 'text-red-600' : 'text-yellow-600'}`} fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
+                      </svg>
+                      <p className={`text-xs font-bold uppercase tracking-wide ${extractedData.bloodGroup ? 'text-red-700' : 'text-yellow-700'}`}>
+                        From Blood Report
+                      </p>
+                    </div>
+                    {extractedData.bloodGroup ? (
+                      <div className="space-y-3">
+                        <div className="bg-white/70 p-3 rounded-lg">
+                          <p className="text-xs text-red-600 font-semibold mb-1">Blood Group</p>
+                          <p className="text-3xl font-bold text-red-600">{extractedData.bloodGroup}</p>
+                        </div>
+                        {extractedData.reportName && (
+                          <div className="bg-white/70 p-3 rounded-lg">
+                            <p className="text-xs text-red-600 font-semibold mb-1">Patient Name</p>
+                            <p className="text-base font-bold text-slate-900">{extractedData.reportName}</p>
+                          </div>
+                        )}
+                        {extractedData.reportAge && (
+                          <div className="bg-white/70 p-3 rounded-lg">
+                            <p className="text-xs text-red-600 font-semibold mb-1">Age</p>
+                            <p className="text-base font-bold text-slate-900">{extractedData.reportAge} years</p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="bg-white/70 p-4 rounded-lg">
+                        <div className="flex items-start">
+                          <svg className="h-5 w-5 text-yellow-600 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                          </svg>
+                          <div>
+                            <p className="text-sm font-semibold text-yellow-800 mb-1">Blood group not detected</p>
+                            <p className="text-xs text-yellow-700">
+                              The AI couldn't extract the blood group from your report. Please ensure the blood group is clearly visible or use manual entry.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              
+              {/* Validation Warnings */}
+              {extractedData.warnings && extractedData.warnings.length > 0 && (
+                <div className="mb-4 p-4 bg-yellow-100 border-l-4 border-yellow-500 rounded-r-lg">
+                  <p className="text-sm font-semibold text-yellow-800 mb-2">⚠️ Validation Warnings:</p>
+                  <ul className="text-sm text-yellow-700 space-y-1">
+                    {extractedData.warnings.map((warning, idx) => (
+                      <li key={idx}>• {warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              
+              <div className="bg-blue-100 border-l-4 border-blue-500 p-4 rounded-r-lg">
+                <p className="text-sm text-blue-800">
+                  <svg className="inline h-4 w-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                  Documents validated successfully! Please verify the information and submit.
+                </p>
+              </div>
+            </div>
+          )}
 
           <div className="mt-6">
             <label className="block text-sm font-semibold text-slate-700 mb-2">
@@ -853,6 +1069,10 @@ const NeederRegistration = () => {
                   setAadhaarFile(file);
                   if (file) {
                     autoExtractFromAadhaar(file);
+                    // Trigger preview if blood report already uploaded
+                    if (bloodReportFile) {
+                      setTimeout(() => previewExtraction(file, bloodReportFile), 500);
+                    }
                   }
                 }}
               />

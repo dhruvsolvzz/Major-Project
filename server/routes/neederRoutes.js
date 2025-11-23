@@ -74,6 +74,83 @@ router.post('/extract-aadhaar', upload.single('aadhaar'), async (req, res) => {
   }
 });
 
+// Preview extraction with cross-validation (before registration)
+router.post('/preview', upload.fields([
+  { name: 'aadhaar', maxCount: 1 },
+  { name: 'bloodReport', maxCount: 1 }
+]), async (req, res) => {
+  try {
+    let aadhaarData = null;
+    let bloodReportData = null;
+    let validation = null;
+
+    // Extract Aadhaar details
+    if (req.files.aadhaar) {
+      try {
+        const aadhaarPath = req.files.aadhaar[0].path;
+        aadhaarData = await aiExtractor.extractAadhaar(aadhaarPath);
+        console.log('Aadhaar extracted:', aadhaarData);
+      } catch (error) {
+        console.error('Aadhaar preview error:', error.message);
+      }
+    }
+
+    // Extract Blood Report details (optional for needers)
+    if (req.files.bloodReport) {
+      try {
+        const bloodReportPath = req.files.bloodReport[0].path;
+        bloodReportData = await aiExtractor.extractBloodReport(bloodReportPath);
+        console.log('Blood report extracted:', bloodReportData);
+      } catch (error) {
+        console.error('Blood report preview error:', error.message);
+        // Fallback to just blood group extraction
+        try {
+          const bloodReportPath = req.files.bloodReport[0].path;
+          const bloodResult = await aiExtractor.extractBloodGroup(bloodReportPath);
+          bloodReportData = {
+            bloodGroup: bloodResult.bloodGroup,
+            patientName: null,
+            age: null,
+            gender: null,
+            method: bloodResult.method
+          };
+          console.log('Blood group fallback extracted:', bloodReportData);
+        } catch (fallbackError) {
+          console.error('Blood group fallback error:', fallbackError.message);
+        }
+      }
+    }
+
+    // Cross-validate if both documents were extracted
+    if (aadhaarData && bloodReportData && aadhaarData.name && bloodReportData.patientName) {
+      validation = await aiExtractor.crossValidateDocuments(aadhaarData, bloodReportData);
+      console.log('Cross-validation result:', validation);
+    }
+
+    res.json({
+      success: true,
+      aadhaarNumber: aadhaarData?.aadhaarNumber || null,
+      aadhaarName: aadhaarData?.name || null,
+      aadhaarAge: aadhaarData?.age || null,
+      aadhaarGender: aadhaarData?.gender || null,
+      bloodGroup: bloodReportData?.bloodGroup || null,
+      reportName: bloodReportData?.patientName || null,
+      reportAge: bloodReportData?.age || null,
+      reportGender: bloodReportData?.gender || null,
+      method: aadhaarData?.method || bloodReportData?.method || null,
+      validation: validation,
+      warnings: validation?.warnings || [],
+      isValid: validation?.isValid !== false
+    });
+  } catch (error) {
+    console.error('Preview error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to preview extraction'
+    });
+  }
+});
+
 // Register needer
 router.post('/register', upload.fields([
   { name: 'aadhaar', maxCount: 1 },
