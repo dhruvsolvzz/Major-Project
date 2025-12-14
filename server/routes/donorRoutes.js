@@ -3,10 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const Donor = require('../models/Donor');
-const ocrEngine = require('../utils/ocrEngine');
-const bloodReportParser = require('../utils/bloodReportParser');
-const aadhaarValidator = require('../utils/aadhaarValidator');
-const aiExtractor = require('../utils/aiExtractor');
+const hybridExtractor = require('../utils/hybridExtractor');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -20,32 +17,23 @@ const storage = multer.diskStorage({
 
 const upload = multer({ 
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+  limits: { fileSize: 10 * 1024 * 1024 }
 });
 
 // Login route
 router.post('/login', async (req, res) => {
   try {
     const { aadhaarNumber, password } = req.body;
-
-    // Validate input
     if (!aadhaarNumber || !password) {
       return res.status(400).json({ error: 'Aadhaar number and password are required' });
     }
-
-    // Find donor by Aadhaar number
     const donor = await Donor.findOne({ aadhaarNumber });
-
     if (!donor) {
       return res.status(401).json({ error: 'Invalid Aadhaar number or password' });
     }
-
-    // Check password (plain text comparison for now - should use bcrypt in production)
     if (donor.password !== password) {
       return res.status(401).json({ error: 'Invalid Aadhaar number or password' });
     }
-
-    // Login successful
     res.json({
       success: true,
       message: 'Login successful',
@@ -67,15 +55,37 @@ router.post('/login', async (req, res) => {
 router.post('/extract-aadhaar', upload.single('aadhaar'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, error: 'No file' });
-
-    const data = await aiExtractor.extractAadhaar(req.file.path);
+    const data = await hybridExtractor.extractAadhaar(req.file.path);
     res.json({ success: true, aadhaarData: data });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Preview extraction with cross-validation (before registration)
+// Auto-extract from Blood Report
+router.post('/extract-blood-report', upload.single('bloodReport'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, error: 'No file' });
+    const data = await hybridExtractor.extractBloodReport(req.file.path);
+    
+    res.json({ 
+      success: true, 
+      bloodReportData: {
+        bloodGroup: data.bloodGroup || null,
+        patientName: data.patientName || data.name || null,
+        patientAge: data.age || null,
+        dateOfBirth: data.dateOfBirth || null,
+        testDate: data.testDate || data.reportDate || null,
+        method: data.method || 'unknown'
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+
+// Preview extraction
 router.post('/preview', upload.fields([
   { name: 'aadhaar', maxCount: 1 },
   { name: 'bloodReport', maxCount: 1 }
@@ -85,47 +95,28 @@ router.post('/preview', upload.fields([
     let bloodReportData = null;
     let validation = null;
 
-    // Extract Aadhaar details
     if (req.files.aadhaar) {
       try {
-        const aadhaarPath = req.files.aadhaar[0].path;
-        aadhaarData = await aiExtractor.extractAadhaar(aadhaarPath);
-        console.log('Aadhaar extracted:', aadhaarData);
+        aadhaarData = await hybridExtractor.extractAadhaar(req.files.aadhaar[0].path);
       } catch (error) {
         console.error('Aadhaar preview error:', error.message);
       }
     }
 
-    // Extract Blood Report details
     if (req.files.bloodReport) {
       try {
-        const bloodReportPath = req.files.bloodReport[0].path;
-        bloodReportData = await aiExtractor.extractBloodReport(bloodReportPath);
-        console.log('Blood report extracted:', bloodReportData);
+        bloodReportData = await hybridExtractor.extractBloodReport(req.files.bloodReport[0].path);
       } catch (error) {
         console.error('Blood report preview error:', error.message);
-        // Fallback to just blood group extraction
         try {
-          const bloodReportPath = req.files.bloodReport[0].path;
-          const bloodResult = await aiExtractor.extractBloodGroup(bloodReportPath);
-          bloodReportData = {
-            bloodGroup: bloodResult.bloodGroup,
-            patientName: null,
-            age: null,
-            gender: null,
-            method: bloodResult.method
-          };
-          console.log('Blood group fallback extracted:', bloodReportData);
-        } catch (fallbackError) {
-          console.error('Blood group fallback error:', fallbackError.message);
-        }
+          const bloodResult = await hybridExtractor.extractBloodGroup(req.files.bloodReport[0].path);
+          bloodReportData = { bloodGroup: bloodResult.bloodGroup, method: bloodResult.method };
+        } catch (e) {}
       }
     }
 
-    // Cross-validate if both documents were extracted
     if (aadhaarData && bloodReportData && aadhaarData.name && bloodReportData.patientName) {
-      validation = await aiExtractor.crossValidateDocuments(aadhaarData, bloodReportData);
-      console.log('Cross-validation result:', validation);
+      validation = await hybridExtractor.crossValidateDocuments(aadhaarData, bloodReportData);
     }
 
     res.json({
@@ -136,8 +127,6 @@ router.post('/preview', upload.fields([
       aadhaarGender: aadhaarData?.gender || null,
       bloodGroup: bloodReportData?.bloodGroup || null,
       reportName: bloodReportData?.patientName || null,
-      reportAge: bloodReportData?.age || null,
-      reportGender: bloodReportData?.gender || null,
       method: aadhaarData?.method || bloodReportData?.method || null,
       validation: validation,
       warnings: validation?.warnings || [],
@@ -145,10 +134,7 @@ router.post('/preview', upload.fields([
     });
   } catch (error) {
     console.error('Preview error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to preview extraction'
-    });
+    res.status(500).json({ success: false, error: 'Failed to preview extraction' });
   }
 });
 
@@ -165,109 +151,54 @@ router.post('/register', upload.fields([
     }
     
     const aadhaarPath = req.files.aadhaar[0].path;
-    const bloodGroupSource = req.body.bloodGroupSource || 'ocr';
+    const bloodGroupSource = req.body.bloodGroupSource || 'ai';
     
     let bloodGroup;
     let bloodReportData = {};
     
-    // Check if manual blood group is provided
     if (bloodGroupSource === 'manual' && req.body.manualBloodGroup) {
       bloodGroup = req.body.manualBloodGroup;
-      console.log('📋 Using manual blood group:', bloodGroup);
-      
       bloodReportData = {
         bloodGroup: bloodGroup,
-        validation: {
-          isValid: true,
-          issues: [],
-          warnings: ['Blood group entered manually - no report verification'],
-          confidence: 100
-        },
-        hospitalName: 'Self-reported',
-        reportDate: new Date().toISOString(),
-        source: 'manual'
+        testDate: new Date().toISOString(),
+        method: 'manual'
       };
     } else {
-      // OCR from blood report
       if (!req.files.bloodReport) {
         return res.status(400).json({ error: 'Blood report is required when not using manual entry' });
       }
       
-      const bloodReportPath = req.files.bloodReport[0].path;
+      console.log('🤖 Extracting blood report...');
+      bloodReportData = await hybridExtractor.extractBloodReport(req.files.bloodReport[0].path);
       
-      // Extract text using OCR
-      console.log('📄 Extracting text from Blood Report...');
-      const bloodReportText = await ocrEngine.extract(bloodReportPath);
-      console.log('📄 Blood report text extracted:', bloodReportText.substring(0, 100));
-      
-      // Parse blood report
-      const strictMode = process.env.NODE_ENV === 'production';
-      console.log('🔍 Parsing Blood Report...');
-      bloodReportData = bloodReportParser.parse(bloodReportText, strictMode);
-      console.log('🔍 Blood report parsed:', {
-        bloodGroup: bloodReportData.bloodGroup,
-        hospital: bloodReportData.hospitalName,
-        validation: bloodReportData.validation
-      });
-      
-      // Blood group is CRITICAL - must be found
       if (!bloodReportData.bloodGroup) {
-        console.log('❌ Blood group not found in report');
         return res.status(400).json({ 
           error: 'Blood group not found in report',
-          hint: 'Please ensure blood group (A+, A-, B+, B-, O+, O-, AB+, AB-) is clearly visible',
-          extractedText: bloodReportText.substring(0, 300) + '...'
+          hint: 'Please ensure blood group is clearly visible'
         });
       }
-      
       bloodGroup = bloodReportData.bloodGroup;
     }
     
-    // Extract text from Aadhaar
-    console.log('📄 Extracting text from Aadhaar...');
-    const aadhaarText = await ocrEngine.extract(aadhaarPath);
-    console.log('📄 Aadhaar text extracted:', aadhaarText.substring(0, 100));
+    console.log('🤖 Extracting Aadhaar...');
+    const aadhaarData = await hybridExtractor.extractAadhaar(aadhaarPath);
     
-    // Parse Aadhaar (non-strict mode for development/testing)
-    const strictMode = process.env.NODE_ENV === 'production';
-    console.log('🔍 Parsing Aadhaar (strict mode:', strictMode, ')');
-    const aadhaarData = aadhaarValidator.parse(aadhaarText, strictMode);
-    console.log('🔍 Aadhaar parsed:', {
-      number: aadhaarData.aadhaarNumber,
-      name: aadhaarData.name,
-      age: aadhaarData.age,
-      dob: aadhaarData.dob,
-      gender: aadhaarData.gender,
-      validation: aadhaarData.validation
-    });
-    
-    // Validate Aadhaar
-    if (!aadhaarData.validation.isValid) {
-      console.log('❌ Aadhaar validation failed:', aadhaarData.validation);
+    if (!aadhaarData.aadhaarNumber || !aadhaarData.name) {
       return res.status(400).json({ 
-        error: 'Invalid Aadhaar document',
-        issues: aadhaarData.validation.issues,
-        warnings: aadhaarData.validation.warnings || [],
-        extractedText: aadhaarText.substring(0, 200) + '...'
+        error: 'Could not extract required data from Aadhaar card',
+        hint: 'Please ensure the Aadhaar card image is clear'
       });
     }
     
-    // Log warnings but continue in dev mode
-    if (bloodReportData.validation && bloodReportData.validation.warnings && bloodReportData.validation.warnings.length > 0) {
-      console.log('⚠️ Blood report warnings:', bloodReportData.validation.warnings);
-    }
-    
-    // Check for duplicate Aadhaar
     const existing = await Donor.findOne({ aadhaarNumber: aadhaarData.aadhaarNumber });
     if (existing) {
       return res.status(400).json({ error: 'Aadhaar already registered' });
     }
     
-    // Create donor
     const donor = new Donor({
       name: name || aadhaarData.name,
-      age: parseInt(age),
-      gender,
+      age: parseInt(age) || aadhaarData.age,
+      gender: gender || aadhaarData.gender,
       bloodGroup: bloodReportData.bloodGroup,
       phone,
       password,
@@ -279,23 +210,19 @@ router.post('/register', upload.fields([
       aadhaarNumber: aadhaarData.aadhaarNumber,
       aadhaarData: {
         extractedName: aadhaarData.name,
-        extractedDOB: aadhaarData.dob,
+        extractedDOB: aadhaarData.dateOfBirth,
         extractedGender: aadhaarData.gender,
-        verified: aadhaarData.validation.confidence > 70
+        verified: true
       },
       bloodReportData: {
-        hospitalName: bloodReportData.hospitalName || 'Not specified',
-        reportDate: bloodReportData.reportDate || new Date().toISOString(),
+        hospitalName: 'Not specified',
+        reportDate: bloodReportData.testDate || new Date().toISOString(),
         extractedBloodGroup: bloodGroup,
-        verified: bloodReportData.validation ? bloodReportData.validation.confidence > 70 : false,
-        source: bloodReportData.source || 'ocr'
+        verified: true,
+        source: bloodReportData.method || 'hybrid'
       },
       aadhaarFile: aadhaarPath,
-      bloodReportFile: req.files.bloodReport ? req.files.bloodReport[0].path : null,
-      ocrRawData: {
-        aadhaar: aadhaarText,
-        bloodReport: bloodReportData.rawText || ''
-      }
+      bloodReportFile: req.files.bloodReport ? req.files.bloodReport[0].path : null
     });
     
     await donor.save();
@@ -305,24 +232,10 @@ router.post('/register', upload.fields([
       donor: {
         id: donor._id,
         name: donor.name,
-        age: donor.age,
-        gender: donor.gender,
         bloodGroup: donor.bloodGroup,
-        phone: donor.phone,
-        address: donor.address,
         extractedData: {
-          aadhaar: {
-            number: aadhaarData.aadhaarNumber,
-            name: aadhaarData.name,
-            age: aadhaarData.age,
-            dob: aadhaarData.dob,
-            gender: aadhaarData.gender
-          },
-          bloodReport: {
-            bloodGroup: bloodReportData.bloodGroup,
-            hospital: bloodReportData.hospitalName,
-            date: bloodReportData.reportDate
-          }
+          aadhaar: { number: aadhaarData.aadhaarNumber, name: aadhaarData.name, method: aadhaarData.method },
+          bloodReport: { bloodGroup: bloodReportData.bloodGroup, method: bloodReportData.method }
         }
       }
     });
@@ -332,10 +245,11 @@ router.post('/register', upload.fields([
   }
 });
 
+
 // Get all donors
 router.get('/', async (req, res) => {
   try {
-    const donors = await Donor.find({ isActive: true }).select('-ocrRawData');
+    const donors = await Donor.find({ isActive: true }).select('-password');
     res.json(donors);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -345,8 +259,7 @@ router.get('/', async (req, res) => {
 // Get nearby donors
 router.get('/nearby', async (req, res) => {
   try {
-    const { latitude, longitude, maxDistance = 20000 } = req.query; // maxDistance in meters
-    
+    const { latitude, longitude, maxDistance = 20000 } = req.query;
     const donors = await Donor.find({
       isActive: true,
       location: {
@@ -358,8 +271,7 @@ router.get('/nearby', async (req, res) => {
           $maxDistance: parseInt(maxDistance)
         }
       }
-    }).select('-ocrRawData');
-    
+    }).select('-password');
     res.json(donors);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -370,19 +282,10 @@ router.get('/nearby', async (req, res) => {
 router.get('/blood-report/:id', async (req, res) => {
   try {
     const donor = await Donor.findById(req.params.id);
-    
-    if (!donor) {
-      return res.status(404).json({ error: 'Donor not found' });
-    }
-    
-    if (!donor.bloodReportFile) {
-      return res.status(404).json({ error: 'Blood report not available' });
-    }
-    
-    // Send the file
+    if (!donor) return res.status(404).json({ error: 'Donor not found' });
+    if (!donor.bloodReportFile) return res.status(404).json({ error: 'Blood report not available' });
     res.sendFile(path.resolve(donor.bloodReportFile));
   } catch (error) {
-    console.error('Blood report fetch error:', error);
     res.status(500).json({ error: 'Failed to fetch blood report' });
   }
 });

@@ -249,6 +249,72 @@ const DonorRegistration = () => {
     }
   };
 
+  // Auto-extract and fill form from Blood Report
+  const autoExtractFromBloodReport = async (file) => {
+    setAutoFillStatus({ isExtracting: true, isComplete: false, extractedFields: [] });
+    
+    try {
+      const formDataBlood = new FormData();
+      formDataBlood.append('bloodReport', file);
+
+      const response = await fetch('http://localhost:5000/api/donors/extract-blood-report', {
+        method: 'POST',
+        body: formDataBlood
+      });
+
+      const data = await response.json();
+      
+      if (data.success && data.bloodReportData) {
+        const fields = [];
+        
+        // Auto-fill extracted fields
+        setFormData(prev => {
+          const updated = { ...prev };
+          
+          // Fill age from age field if available
+          if (data.bloodReportData.patientAge && !updated.age) {
+            updated.age = data.bloodReportData.patientAge;
+            fields.push('Age');
+          }
+          
+          // Fill name from patient name if available
+          if (data.bloodReportData.patientName && !updated.name) {
+            updated.name = data.bloodReportData.patientName;
+            fields.push('Name');
+          }
+          
+          // Fill DOB if available
+          if (data.bloodReportData.dateOfBirth && !updated.dob) {
+            updated.dob = data.bloodReportData.dateOfBirth;
+            fields.push('Date of Birth');
+          }
+          
+          return updated;
+        });
+        
+        // Set blood group
+        if (data.bloodReportData.bloodGroup) {
+          setExtractedData(prev => ({
+            ...prev,
+            bloodGroup: data.bloodReportData.bloodGroup
+          }));
+          setManualBloodGroup(data.bloodReportData.bloodGroup);
+          setUseManualBloodGroup(false); // Use extracted data, not manual
+          fields.push('Blood Group');
+        }
+
+        setAutoFillStatus({ isExtracting: false, isComplete: true, extractedFields: fields });
+        setTimeout(() => setAutoFillStatus(prev => ({ ...prev, isComplete: false })), 5000);
+      }
+    } catch (error) {
+      console.error('Auto-extract blood report error:', error);
+    } finally {
+      if (autoFillStatus.isExtracting) {
+        setAutoFillStatus({ isExtracting: false, isComplete: false, extractedFields: [] });
+      }
+    }
+  };
+
   // Validate form data against Aadhaar
   const validateAgainstAadhaar = () => {
     console.log('🔍 Validating against Aadhaar...');
@@ -331,8 +397,7 @@ const DonorRegistration = () => {
     return isValid;
   };
 
-  const handleFileChange = (name) => (e) => {
-    const file = e.target.files[0];
+  const handleFileChange = (name, file) => {
     const updatedFiles = {
       ...files,
       [name]: file
@@ -348,9 +413,13 @@ const DonorRegistration = () => {
       }
     }
     
-    // Auto-preview when blood report is uploaded and Aadhaar exists
-    if (file && name === 'bloodReport' && updatedFiles.aadhaar && !useManualBloodGroup) {
-      setTimeout(() => previewExtraction(updatedFiles.aadhaar, updatedFiles.bloodReport), 500);
+    // Auto-extract when blood report is uploaded
+    if (file && name === 'bloodReport' && !useManualBloodGroup) {
+      autoExtractFromBloodReport(file);
+      // If aadhaar already uploaded, trigger preview
+      if (updatedFiles.aadhaar) {
+        setTimeout(() => previewExtraction(updatedFiles.aadhaar, updatedFiles.bloodReport), 500);
+      }
     }
   };
 
@@ -818,9 +887,6 @@ const DonorRegistration = () => {
                 </p>
                 {formData.latitude && formData.longitude && (
                   <>
-                    <p className="text-xs text-slate-600 mb-3 bg-white px-3 py-2 rounded-lg">
-                      Coordinates: {parseFloat(formData.latitude).toFixed(4)}, {parseFloat(formData.longitude).toFixed(4)}
-                    </p>
                     <button
                       type="button"
                       onClick={async () => {
@@ -929,7 +995,7 @@ const DonorRegistration = () => {
                     <svg className="h-4 w-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                     </svg>
-                    Location found! Coordinates: {parseFloat(formData.latitude).toFixed(4)}, {parseFloat(formData.longitude).toFixed(4)}
+                    Location found!
                   </p>
                 )}
               </div>
@@ -945,7 +1011,7 @@ const DonorRegistration = () => {
               <FileUpload
                 label="Upload Aadhaar (PDF/Image)"
                 name="aadhaar"
-                onChange={handleFileChange('aadhaar')}
+                onChange={(file) => handleFileChange('aadhaar', file)}
               />
               {files.aadhaar && (
                 <div className="mt-2">
@@ -970,7 +1036,7 @@ const DonorRegistration = () => {
               <FileUpload
                 label="Upload Blood Report (PDF/Image)"
                 name="bloodReport"
-                onChange={handleFileChange('bloodReport')}
+                onChange={(file) => handleFileChange('bloodReport', file)}
                 required={!useManualBloodGroup}
               />
               {files.bloodReport && (
@@ -1024,7 +1090,7 @@ const DonorRegistration = () => {
 
           {useManualBloodGroup && (
             <div className="mt-4 p-6 bg-do-blue-50 rounded-xl border-2 border-do-blue-300 shadow-soft">
-              <label className="block text-slate-800 font-semibold mb-3 flex items-center">
+              <label className="flex text-slate-800 font-semibold mb-3 items-center">
                 <svg className="h-5 w-5 mr-2 text-do-blue-600" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" clipRule="evenodd" />
                 </svg>

@@ -89,28 +89,42 @@ Answer:
   // ======================================
   async extractAadhaarFromText(text) {
     const prompt = `
-Extract Aadhaar information from this text.
+You are extracting information from an Indian Aadhaar card.
 
-Text:
+Text from Aadhaar card:
 ${text}
 
-Return JSON like:
+IMPORTANT RULES:
+1. The Aadhaar number is a 12-digit number (may have spaces like "1234 5678 9012")
+2. Name is usually after "Name:" or the first proper name on the card
+3. Date of Birth (DOB) is in DD/MM/YYYY format
+4. Gender is Male, Female, or Other
+5. Look for patterns like "DOB:", "Date of Birth:", "Year of Birth:", "YOB:"
+
+Return ONLY this JSON (no other text):
 {
-  "aadhaarNumber": "12 digits",
-  "name": "Full name",
+  "aadhaarNumber": "12 digit number without spaces",
+  "name": "Full name exactly as shown",
   "dateOfBirth": "DD/MM/YYYY",
-  "gender": "Male/Female/Other"
+  "gender": "Male or Female or Other"
 }
 
-If any field is missing, use null.
-JSON only:
+If a field cannot be found, use null for that field.
 `;
 
     const output = await this.generateText(prompt);
 
     try {
       const jsonMatch = output.match(/\{[\s\S]*\}/);
-      return jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        // Clean up aadhaar number - remove spaces
+        if (parsed.aadhaarNumber) {
+          parsed.aadhaarNumber = parsed.aadhaarNumber.replace(/\s/g, '');
+        }
+        return parsed;
+      }
+      return null;
     } catch (err) {
       console.error("JSON parse error:", err);
       return null;
@@ -122,29 +136,45 @@ JSON only:
   // ======================================================
   async extractBloodReportFromText(text) {
     const prompt = `
-Extract blood report information in JSON.
+You are extracting information from a medical blood report.
 
-Text:
+Text from blood report:
 ${text}
 
-Return:
+IMPORTANT RULES:
+1. Blood Group MUST be one of: A+, A-, B+, B-, O+, O-, AB+, AB-
+2. Look for "Blood Group:", "Blood Type:", "ABO Group:", "Rh Type:"
+3. Patient name is usually at the top or after "Patient Name:", "Name:"
+4. Age is a number, look for "Age:", "Years:", or number followed by "Y" or "yrs"
+5. Gender is Male/Female/M/F
+6. Test date is when the test was done
+
+Return ONLY this JSON (no other text):
 {
-  "bloodGroup": "A+/A-/B+/B-/O+/O-/AB+/AB-",
-  "patientName": "Full name",
-  "age": "Number only",
-  "gender": "Male/Female/Other",
+  "bloodGroup": "A+ or A- or B+ or B- or O+ or O- or AB+ or AB-",
+  "patientName": "Full name of patient",
+  "age": 25,
+  "gender": "Male or Female",
   "testDate": "YYYY-MM-DD"
 }
 
-If not found, return null fields.
-Only JSON:
+If a field cannot be found, use null for that field.
+Blood group is the MOST important field - look carefully for it.
 `;
 
     const output = await this.generateText(prompt);
 
     try {
       const jsonMatch = output.match(/\{[\s\S]*\}/);
-      return jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        // Ensure age is a number
+        if (parsed.age && typeof parsed.age === 'string') {
+          parsed.age = parseInt(parsed.age.replace(/\D/g, '')) || null;
+        }
+        return parsed;
+      }
+      return null;
     } catch (err) {
       console.error("JSON parse error:", err);
       return null;
@@ -203,10 +233,57 @@ Only JSON:
 
     const data = await this.extractAadhaarFromText(text);
 
+    // Calculate age from DOB if available
+    let age = null;
+    if (data && data.dateOfBirth) {
+      try {
+        const dobParts = data.dateOfBirth.split('/');
+        if (dobParts.length === 3) {
+          const dob = new Date(dobParts[2], dobParts[1] - 1, dobParts[0]);
+          const today = new Date();
+          age = Math.floor((today - dob) / (365.25 * 24 * 60 * 60 * 1000));
+        }
+      } catch (e) {
+        console.log('Could not calculate age from DOB');
+      }
+    }
+
     return {
       ...data,
+      age: age,
       method: "OCR → Groq Text Model",
       confidence: "high"
+    };
+  }
+
+  // =================================
+  // 🔄 Cross-validate documents
+  // =================================
+  async crossValidateDocuments(aadhaarData, bloodReportData) {
+    const warnings = [];
+    let isValid = true;
+
+    // Check name match
+    if (aadhaarData.name && bloodReportData.patientName) {
+      const aadhaarName = aadhaarData.name.toLowerCase().trim();
+      const reportName = bloodReportData.patientName.toLowerCase().trim();
+      
+      if (!aadhaarName.includes(reportName.split(' ')[0]) && 
+          !reportName.includes(aadhaarName.split(' ')[0])) {
+        warnings.push('Names do not match between Aadhaar and blood report');
+      }
+    }
+
+    // Check gender match
+    if (aadhaarData.gender && bloodReportData.gender) {
+      if (aadhaarData.gender.toLowerCase() !== bloodReportData.gender.toLowerCase()) {
+        warnings.push('Gender mismatch between documents');
+      }
+    }
+
+    return {
+      isValid: warnings.length === 0,
+      warnings: warnings
     };
   }
 }

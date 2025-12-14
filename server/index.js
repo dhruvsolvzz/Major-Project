@@ -14,6 +14,11 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// Ensure upload directories exist
+const fs = require('fs');
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
 // MongoDB Connection
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/redbridge')
 .then(() => {
@@ -33,7 +38,6 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/redbridge
 app.use('/api/donors', require('./routes/donorRoutes'));
 app.use('/api/needers', require('./routes/neederRoutes'));
 app.use('/api/match', require('./routes/matchRoutes'));
-app.use('/api/ocr', require('./routes/ocrRoutes'));
 
 // Health check
 app.get('/api/health', (req, res) => {

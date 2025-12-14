@@ -100,6 +100,70 @@ const NeederRegistration = () => {
     }
   };
 
+  // Auto-extract and fill form from Blood Report
+  const autoExtractFromBloodReport = async (file) => {
+    setAutoFillStatus({ isExtracting: true, isComplete: false, extractedFields: [] });
+    
+    try {
+      const formDataBlood = new FormData();
+      formDataBlood.append('bloodReport', file);
+
+      const response = await fetch('http://localhost:5000/api/needers/extract-blood-report', {
+        method: 'POST',
+        body: formDataBlood
+      });
+
+      const data = await response.json();
+      
+      if (data.success && data.bloodReportData) {
+        const fields = [];
+        
+        // Auto-fill extracted fields
+        setFormData(prev => {
+          const updated = { ...prev };
+          
+          // Fill age from age field if available
+          if (data.bloodReportData.patientAge && !updated.age) {
+            updated.age = data.bloodReportData.patientAge;
+            fields.push('Age');
+          }
+          
+          // Fill name from patient name if available
+          if (data.bloodReportData.patientName && !updated.name) {
+            updated.name = data.bloodReportData.patientName;
+            fields.push('Name');
+          }
+          
+          // Fill DOB if available
+          if (data.bloodReportData.dateOfBirth && !updated.dob) {
+            updated.dob = data.bloodReportData.dateOfBirth;
+            fields.push('Date of Birth');
+          }
+          
+          return updated;
+        });
+        
+        // Set blood group
+        if (data.bloodReportData.bloodGroup) {
+          setExtractedData(prev => ({
+            ...prev,
+            bloodGroup: data.bloodReportData.bloodGroup
+          }));
+          fields.push('Blood Group');
+        }
+
+        setAutoFillStatus({ isExtracting: false, isComplete: true, extractedFields: fields });
+        setTimeout(() => setAutoFillStatus(prev => ({ ...prev, isComplete: false })), 5000);
+      }
+    } catch (error) {
+      console.error('Auto-extract blood report error:', error);
+    } finally {
+      if (autoFillStatus.isExtracting) {
+        setAutoFillStatus({ isExtracting: false, isComplete: false, extractedFields: [] });
+      }
+    }
+  };
+
   // Preview extraction before submission
   const previewExtraction = async (aadhaarFileToUse, bloodReportFileToUse) => {
     const aadhaar = aadhaarFileToUse || aadhaarFile;
@@ -658,12 +722,15 @@ const NeederRegistration = () => {
                 <FileUpload
                   label="Upload Blood Report (PDF/Image)"
                   name="bloodReport"
-                  onChange={(e) => {
-                    const file = e.target.files[0];
+                  onChange={(file) => {
                     setBloodReportFile(file);
-                    // Trigger preview if aadhaar already uploaded
-                    if (file && aadhaarFile) {
-                      setTimeout(() => previewExtraction(aadhaarFile, file), 500);
+                    // Auto-extract when blood report is uploaded
+                    if (file && !useManualBloodGroup) {
+                      autoExtractFromBloodReport(file);
+                      // Trigger preview if aadhaar already uploaded
+                      if (aadhaarFile) {
+                        setTimeout(() => previewExtraction(aadhaarFile, file), 500);
+                      }
                     }
                   }}
                 />
@@ -955,11 +1022,7 @@ const NeederRegistration = () => {
                     </>
                   )}
                 </p>
-                {formData.latitude && formData.longitude && (
-                  <p className="text-xs text-slate-600 bg-white px-3 py-2 rounded-lg">
-                    Coordinates: {parseFloat(formData.latitude).toFixed(4)}, {parseFloat(formData.longitude).toFixed(4)}
-                  </p>
-                )}
+
               </>
             ) : (
               <div className="space-y-4">
@@ -1048,7 +1111,7 @@ const NeederRegistration = () => {
                     <svg className="h-4 w-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                     </svg>
-                    Location found! Coordinates: {parseFloat(formData.latitude).toFixed(4)}, {parseFloat(formData.longitude).toFixed(4)}
+                    Location found!
                   </p>
                 )}
               </div>
@@ -1064,8 +1127,7 @@ const NeederRegistration = () => {
               <FileUpload
                 label="Upload Aadhaar (PDF/Image)"
                 name="aadhaar"
-                onChange={(e) => {
-                  const file = e.target.files[0];
+                onChange={(file) => {
                   setAadhaarFile(file);
                   if (file) {
                     autoExtractFromAadhaar(file);

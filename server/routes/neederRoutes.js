@@ -3,9 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const Needer = require('../models/Needer');
-const ocrEngine = require('../utils/ocrEngine');
-const aadhaarValidator = require('../utils/aadhaarValidator');
-const aiExtractor = require('../utils/aiExtractor');
+const hybridExtractor = require('../utils/hybridExtractor');
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -25,25 +23,16 @@ const upload = multer({
 router.post('/login', async (req, res) => {
   try {
     const { aadhaarNumber, password } = req.body;
-
-    // Validate input
     if (!aadhaarNumber || !password) {
       return res.status(400).json({ error: 'Aadhaar number and password are required' });
     }
-
-    // Find needer by Aadhaar number
     const needer = await Needer.findOne({ aadhaarNumber });
-
     if (!needer) {
       return res.status(401).json({ error: 'Invalid Aadhaar number or password' });
     }
-
-    // Check password (plain text comparison for now - should use bcrypt in production)
     if (needer.password !== password) {
       return res.status(401).json({ error: 'Invalid Aadhaar number or password' });
     }
-
-    // Login successful
     res.json({
       success: true,
       message: 'Login successful',
@@ -66,15 +55,36 @@ router.post('/login', async (req, res) => {
 router.post('/extract-aadhaar', upload.single('aadhaar'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, error: 'No file' });
-
-    const data = await aiExtractor.extractAadhaar(req.file.path);
+    const data = await hybridExtractor.extractAadhaar(req.file.path);
     res.json({ success: true, aadhaarData: data });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Preview extraction with cross-validation (before registration)
+// Auto-extract from Blood Report
+router.post('/extract-blood-report', upload.single('bloodReport'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, error: 'No file' });
+    const data = await hybridExtractor.extractBloodReport(req.file.path);
+    
+    res.json({ 
+      success: true, 
+      bloodReportData: {
+        bloodGroup: data.bloodGroup || null,
+        patientName: data.patientName || data.name || null,
+        patientAge: data.age || null,
+        dateOfBirth: data.dateOfBirth || null,
+        testDate: data.testDate || data.reportDate || null,
+        method: data.method || 'unknown'
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Preview extraction
 router.post('/preview', upload.fields([
   { name: 'aadhaar', maxCount: 1 },
   { name: 'bloodReport', maxCount: 1 }
@@ -84,47 +94,28 @@ router.post('/preview', upload.fields([
     let bloodReportData = null;
     let validation = null;
 
-    // Extract Aadhaar details
     if (req.files.aadhaar) {
       try {
-        const aadhaarPath = req.files.aadhaar[0].path;
-        aadhaarData = await aiExtractor.extractAadhaar(aadhaarPath);
-        console.log('Aadhaar extracted:', aadhaarData);
+        aadhaarData = await hybridExtractor.extractAadhaar(req.files.aadhaar[0].path);
       } catch (error) {
         console.error('Aadhaar preview error:', error.message);
       }
     }
 
-    // Extract Blood Report details (optional for needers)
     if (req.files.bloodReport) {
       try {
-        const bloodReportPath = req.files.bloodReport[0].path;
-        bloodReportData = await aiExtractor.extractBloodReport(bloodReportPath);
-        console.log('Blood report extracted:', bloodReportData);
+        bloodReportData = await hybridExtractor.extractBloodReport(req.files.bloodReport[0].path);
       } catch (error) {
         console.error('Blood report preview error:', error.message);
-        // Fallback to just blood group extraction
         try {
-          const bloodReportPath = req.files.bloodReport[0].path;
-          const bloodResult = await aiExtractor.extractBloodGroup(bloodReportPath);
-          bloodReportData = {
-            bloodGroup: bloodResult.bloodGroup,
-            patientName: null,
-            age: null,
-            gender: null,
-            method: bloodResult.method
-          };
-          console.log('Blood group fallback extracted:', bloodReportData);
-        } catch (fallbackError) {
-          console.error('Blood group fallback error:', fallbackError.message);
-        }
+          const bloodResult = await hybridExtractor.extractBloodGroup(req.files.bloodReport[0].path);
+          bloodReportData = { bloodGroup: bloodResult.bloodGroup, method: bloodResult.method };
+        } catch (e) {}
       }
     }
 
-    // Cross-validate if both documents were extracted
     if (aadhaarData && bloodReportData && aadhaarData.name && bloodReportData.patientName) {
-      validation = await aiExtractor.crossValidateDocuments(aadhaarData, bloodReportData);
-      console.log('Cross-validation result:', validation);
+      validation = await hybridExtractor.crossValidateDocuments(aadhaarData, bloodReportData);
     }
 
     res.json({
@@ -135,8 +126,6 @@ router.post('/preview', upload.fields([
       aadhaarGender: aadhaarData?.gender || null,
       bloodGroup: bloodReportData?.bloodGroup || null,
       reportName: bloodReportData?.patientName || null,
-      reportAge: bloodReportData?.age || null,
-      reportGender: bloodReportData?.gender || null,
       method: aadhaarData?.method || bloodReportData?.method || null,
       validation: validation,
       warnings: validation?.warnings || [],
@@ -144,12 +133,10 @@ router.post('/preview', upload.fields([
     });
   } catch (error) {
     console.error('Preview error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to preview extraction'
-    });
+    res.status(500).json({ success: false, error: 'Failed to preview extraction' });
   }
 });
+
 
 // Register needer
 router.post('/register', upload.fields([
@@ -166,48 +153,37 @@ router.post('/register', upload.fields([
     const aadhaarPath = req.files.aadhaar[0].path;
     let bloodReportData = null;
     
-    // Process blood report if uploaded (optional)
     if (req.files.bloodReport) {
-      const bloodReportPath = req.files.bloodReport[0].path;
-      const bloodReportText = await ocrEngine.extract(bloodReportPath);
-      const parsedReport = require('../utils/bloodReportParser').parse(bloodReportText, false);
-      
+      console.log('🤖 Extracting blood report...');
+      const extractedReport = await hybridExtractor.extractBloodReport(req.files.bloodReport[0].path);
       bloodReportData = {
-        hospitalName: parsedReport.hospitalName || 'Not specified',
-        reportDate: parsedReport.reportDate || new Date().toISOString(),
-        extractedBloodGroup: parsedReport.bloodGroup,
-        verified: parsedReport.validation ? parsedReport.validation.confidence > 70 : false,
-        source: 'ocr'
+        hospitalName: 'Not specified',
+        reportDate: extractedReport.testDate || new Date().toISOString(),
+        extractedBloodGroup: extractedReport.bloodGroup,
+        verified: extractedReport.bloodGroup ? true : false,
+        source: extractedReport.method || 'hybrid'
       };
     }
     
-    // Extract text using OCR
-    const aadhaarText = await ocrEngine.extract(aadhaarPath);
+    console.log('🤖 Extracting Aadhaar...');
+    const aadhaarData = await hybridExtractor.extractAadhaar(aadhaarPath);
     
-    // Parse Aadhaar (non-strict mode for development/testing)
-    const strictMode = process.env.NODE_ENV === 'production';
-    const aadhaarData = aadhaarValidator.parse(aadhaarText, strictMode);
-    
-    // Validate
-    if (!aadhaarData.validation.isValid) {
+    if (!aadhaarData.aadhaarNumber || !aadhaarData.name) {
       return res.status(400).json({ 
-        error: 'Invalid Aadhaar document',
-        issues: aadhaarData.validation.issues,
-        warnings: aadhaarData.validation.warnings
+        error: 'Could not extract required data from Aadhaar card',
+        hint: 'Please ensure the Aadhaar card image is clear'
       });
     }
     
-    // Check for duplicate
     const existing = await Needer.findOne({ aadhaarNumber: aadhaarData.aadhaarNumber });
     if (existing) {
       return res.status(400).json({ error: 'Aadhaar already registered' });
     }
     
-    // Create needer
     const needer = new Needer({
       name: name || aadhaarData.name,
-      age: parseInt(age),
-      gender,
+      age: parseInt(age) || aadhaarData.age,
+      gender: gender || aadhaarData.gender,
       requiredBloodGroup,
       phone,
       password,
@@ -220,17 +196,13 @@ router.post('/register', upload.fields([
       aadhaarNumber: aadhaarData.aadhaarNumber,
       aadhaarData: {
         extractedName: aadhaarData.name,
-        extractedDOB: aadhaarData.dob,
+        extractedDOB: aadhaarData.dateOfBirth,
         extractedGender: aadhaarData.gender,
-        verified: aadhaarData.validation.confidence > 70
+        verified: true
       },
       aadhaarFile: aadhaarPath,
       bloodReportFile: req.files.bloodReport ? req.files.bloodReport[0].path : null,
-      bloodReportData: bloodReportData,
-      ocrRawData: {
-        aadhaar: aadhaarText,
-        bloodReport: bloodReportData ? bloodReportData.rawText || '' : ''
-      }
+      bloodReportData: bloodReportData
     });
     
     await needer.save();
@@ -241,7 +213,10 @@ router.post('/register', upload.fields([
         id: needer._id,
         name: needer.name,
         requiredBloodGroup: needer.requiredBloodGroup,
-        extractedData: aadhaarData
+        extractedData: {
+          aadhaar: { number: aadhaarData.aadhaarNumber, name: aadhaarData.name, method: aadhaarData.method },
+          bloodReport: bloodReportData
+        }
       }
     });
   } catch (error) {
@@ -253,7 +228,7 @@ router.post('/register', upload.fields([
 // Get all needers
 router.get('/', async (req, res) => {
   try {
-    const needers = await Needer.find({ isActive: true }).select('-ocrRawData');
+    const needers = await Needer.find({ isActive: true }).select('-password');
     res.json(needers);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -264,19 +239,10 @@ router.get('/', async (req, res) => {
 router.get('/blood-report/:id', async (req, res) => {
   try {
     const needer = await Needer.findById(req.params.id);
-    
-    if (!needer) {
-      return res.status(404).json({ error: 'Needer not found' });
-    }
-    
-    if (!needer.bloodReportFile) {
-      return res.status(404).json({ error: 'Blood report not available' });
-    }
-    
-    // Send the file
+    if (!needer) return res.status(404).json({ error: 'Needer not found' });
+    if (!needer.bloodReportFile) return res.status(404).json({ error: 'Blood report not available' });
     res.sendFile(path.resolve(needer.bloodReportFile));
   } catch (error) {
-    console.error('Blood report fetch error:', error);
     res.status(500).json({ error: 'Failed to fetch blood report' });
   }
 });

@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
 
 const DonorsPage = () => {
   const [needers, setNeeders] = useState([]);
@@ -33,26 +32,20 @@ const DonorsPage = () => {
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <Link to="/" className="flex items-center space-x-3">
-              <motion.div 
-                whileHover={{ scale: 1.1, rotate: 5 }}
-                className="bg-gradient-to-br from-red-500 to-pink-600 p-2 rounded-xl shadow-lg"
+              <div className="bg-gradient-to-br from-red-500 to-pink-600 p-2 rounded-xl shadow-lg"
               >
                 <svg className="h-6 w-6 text-white" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
                 </svg>
-              </motion.div>
+              </div>
               <span className="text-2xl font-bold bg-gradient-to-r from-red-600 to-pink-600 bg-clip-text text-transparent">
                 RedBridge
               </span>
             </Link>
             <Link to="/donor-registration">
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                className="bg-gradient-to-r from-red-500 to-pink-600 text-white px-6 py-2 rounded-full font-semibold shadow-lg hover:shadow-xl transition"
-              >
+              <button className="bg-gradient-to-r from-red-500 to-pink-600 text-white px-6 py-2 rounded-full font-semibold shadow-lg hover:shadow-xl transition">
                 + Register as Donor
-              </motion.button>
+              </button>
             </Link>
           </div>
         </div>
@@ -60,36 +53,21 @@ const DonorsPage = () => {
 
       <div className="max-w-7xl mx-auto px-4 py-12">
         {/* Hero Section */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-12"
-        >
-          <motion.h1 
-            initial={{ scale: 0.9 }}
-            animate={{ scale: 1 }}
-            className="text-5xl font-bold mb-4"
-          >
+        <div className="text-center mb-12">
+          <h1 className="text-5xl font-bold mb-4">
             <span className="bg-gradient-to-r from-red-600 via-pink-600 to-orange-600 bg-clip-text text-transparent">
               People Who Need Your Help
             </span>
-          </motion.h1>
+          </h1>
           <p className="text-xl text-gray-600">
             {needers.length} people waiting for blood donors like you
           </p>
-        </motion.div>
+        </div>
 
         {/* Blood Group Filter */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.2 }}
-          className="mb-8"
-        >
+        <div className="mb-8">
           <div className="flex flex-wrap gap-3 justify-center">
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
+            <button
               onClick={() => setFilter('all')}
               className={`px-6 py-2 rounded-full font-semibold transition ${
                 filter === 'all'
@@ -98,12 +76,10 @@ const DonorsPage = () => {
               }`}
             >
               All ({needers.length})
-            </motion.button>
+            </button>
             {bloodGroups.map((bg) => (
-              <motion.button
+              <button
                 key={bg}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
                 onClick={() => setFilter(bg)}
                 className={`px-6 py-2 rounded-full font-semibold transition ${
                   filter === bg
@@ -112,38 +88,26 @@ const DonorsPage = () => {
                 }`}
               >
                 {bg} ({needers.filter(n => n.requiredBloodGroup === bg).length})
-              </motion.button>
+              </button>
             ))}
           </div>
-        </motion.div>
+        </div>
 
         {/* Donors Grid */}
         {loading ? (
           <div className="flex justify-center items-center h-64">
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-              className="w-16 h-16 border-4 border-red-500 border-t-transparent rounded-full"
-            />
+            <div className="w-16 h-16 border-4 border-red-500 border-t-transparent rounded-full" />
           </div>
         ) : filteredNeeders.length === 0 ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-center py-20"
-          >
+          <div className="text-center py-20">
             <div className="text-6xl mb-4">🙏</div>
             <p className="text-xl text-gray-600">No needers found for {filter}</p>
-          </motion.div>
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredNeeders.map((needer, index) => (
-              <motion.div
+              <div
                 key={needer._id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-                whileHover={{ y: -8, scale: 1.02 }}
                 className="bg-white rounded-2xl shadow-lg hover:shadow-2xl transition p-6 border-2 border-transparent hover:border-red-200"
               >
                 <div className="flex items-start justify-between mb-4">
@@ -151,16 +115,12 @@ const DonorsPage = () => {
                     <h3 className="text-xl font-bold text-gray-900">{needer.name}</h3>
                     <p className="text-sm text-gray-600">{needer.age} years, {needer.gender}</p>
                   </div>
-                  <motion.div
-                    whileHover={{ scale: 1.1, rotate: -5 }}
-                    className="bg-gradient-to-br from-red-500 to-pink-600 text-white px-4 py-2 rounded-xl font-bold text-lg shadow-lg"
-                  >
+                  <div className="bg-gradient-to-br from-red-500 to-pink-600 text-white px-4 py-2 rounded-xl font-bold text-lg shadow-lg">
                     {needer.requiredBloodGroup}
-                  </motion.div>
+                  </div>
                 </div>
 
-                <motion.div
-                  whileHover={{ scale: 1.05 }}
+                <div
                   className={`mb-4 px-4 py-2 rounded-lg font-semibold text-center shadow-md ${
                     needer.urgency === 'Critical' ? 'bg-gradient-to-r from-red-600 to-red-700 text-white' :
                     needer.urgency === 'High' ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white' :
@@ -169,7 +129,7 @@ const DonorsPage = () => {
                   }`}
                 >
                   🚨 {needer.urgency} Urgency
-                </motion.div>
+                </div>
 
                 <div className="space-y-2 text-sm text-gray-600">
                   <div className="flex items-center">
@@ -187,21 +147,17 @@ const DonorsPage = () => {
                 </div>
 
                 <div className="mt-4 space-y-2">
-                  <motion.a
+                  <a
                     href={`tel:${needer.phone}`}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
                     className="w-full bg-gradient-to-r from-red-500 to-pink-600 text-white py-2 rounded-xl font-semibold flex items-center justify-center hover:shadow-lg transition"
                   >
                     <svg className="h-5 w-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
                       <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
                     </svg>
                     Contact Needer
-                  </motion.a>
+                  </a>
                   {needer.bloodReportFile && (
-                    <motion.button
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
+                    <button
                       onClick={() => window.open(`http://localhost:5000/api/needers/blood-report/${needer._id}`, '_blank')}
                       className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white py-2 rounded-xl font-semibold flex items-center justify-center hover:shadow-lg transition"
                     >
@@ -209,10 +165,10 @@ const DonorsPage = () => {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                       View Blood Report
-                    </motion.button>
+                    </button>
                   )}
                 </div>
-              </motion.div>
+              </div>
             ))}
           </div>
         )}
