@@ -4,6 +4,9 @@ const multer = require('multer');
 const path = require('path');
 const Donor = require('../models/Donor');
 const hybridExtractor = require('../utils/hybridExtractor');
+const { generateOTP, sendOTP } = require('../utils/smsService');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -20,34 +23,63 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }
 });
 
-// Login route
-router.post('/login', async (req, res) => {
+// Forgot Password - Send OTP
+router.post('/forgot-password/send-otp', async (req, res) => {
   try {
-    const { aadhaarNumber, password } = req.body;
-    if (!aadhaarNumber || !password) {
-      return res.status(400).json({ error: 'Aadhaar number and password are required' });
+    const { phone } = req.body;
+    if (!phone) {
+      return res.status(400).json({ error: 'Phone number is required' });
     }
-    const donor = await Donor.findOne({ aadhaarNumber });
+
+    const donor = await Donor.findOne({ phone });
     if (!donor) {
-      return res.status(401).json({ error: 'Invalid Aadhaar number or password' });
+      return res.status(404).json({ error: 'Phone number not registered' });
     }
-    if (donor.password !== password) {
-      return res.status(401).json({ error: 'Invalid Aadhaar number or password' });
-    }
-    res.json({
-      success: true,
-      message: 'Login successful',
-      donor: {
-        id: donor._id,
-        name: donor.name,
-        bloodGroup: donor.bloodGroup,
-        phone: donor.phone,
-        aadhaarNumber: donor.aadhaarNumber
-      }
-    });
+
+    const otp = generateOTP();
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    await Donor.updateOne(
+      { phone },
+      { $set: { otp, otpExpiry } }
+    );
+
+    console.log(`Generated OTP for ${phone}: ${otp}`);
+
+    res.json({ success: true, message: 'OTP logged in console for development' });
   } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ error: 'Login failed. Please try again.' });
+    console.error('Send OTP error:', error);
+    res.status(500).json({ error: 'Failed to log OTP. Please try again.' });
+  }
+});
+
+// Forgot Password - Verify OTP and Reset Password
+router.post('/forgot-password/reset', async (req, res) => {
+  try {
+    const { phone, otp, newPassword } = req.body;
+    if (!phone || !otp || !newPassword) {
+      return res.status(400).json({ error: 'Phone number, OTP, and new password are required' });
+    }
+
+    const donor = await Donor.findOne({ phone });
+    if (!donor) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (donor.otp !== otp || donor.otpExpiry < new Date()) {
+      return res.status(401).json({ error: 'Invalid or expired OTP' });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    donor.password = hashedPassword;
+    donor.otp = undefined;
+    donor.otpExpiry = undefined;
+    await donor.save();
+
+    res.json({ success: true, message: 'Password reset successful' });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ error: 'Failed to reset password. Please try again.' });
   }
 });
 
@@ -138,13 +170,42 @@ router.post('/preview', upload.fields([
   }
 });
 
+// Send OTP for signup
+router.post('/send-signup-otp', async (req, res) => {
+  try {
+    const { phone, email } = req.body;
+    if (!phone || !email) {
+      return res.status(400).json({ error: 'Phone number and email are required' });
+    }
+
+    // Check if phone or email already exists
+    const existingPhone = await Donor.findOne({ phone });
+    const existingEmail = await Donor.findOne({ email });
+
+    if (existingPhone) {
+      return res.status(400).json({ error: 'Phone number already registered' });
+    }
+    if (existingEmail) {
+      return res.status(400).json({ error: 'Email already registered' });
+    }
+
+    const otp = generateOTP();
+    console.log(`Generated OTP for registration (Donor): ${otp}`);
+
+    res.json({ success: true, message: 'OTP logged in console for development' });
+  } catch (error) {
+    console.error('Send OTP error:', error);
+    res.status(500).json({ error: 'Failed to log OTP. Please try again.' });
+  }
+});
+
 // Register donor
 router.post('/register', upload.fields([
   { name: 'aadhaar', maxCount: 1 },
   { name: 'bloodReport', maxCount: 1 }
 ]), async (req, res) => {
   try {
-    const { name, age, gender, phone, password, address, latitude, longitude } = req.body;
+    const { name, age, gender, phone, email, password, address, latitude, longitude, otp } = req.body;
     
     if (!req.files.aadhaar) {
       return res.status(400).json({ error: 'Aadhaar document is required' });
@@ -195,13 +256,27 @@ router.post('/register', upload.fields([
       return res.status(400).json({ error: 'Aadhaar already registered' });
     }
     
+    // Check if phone or email already exists
+    const existingPhone = await Donor.findOne({ phone });
+    const existingEmail = await Donor.findOne({ email });
+    if (existingPhone) {
+      return res.status(400).json({ error: 'Phone number already registered' });
+    }
+    if (existingEmail) {
+      return res.status(400).json({ error: 'Email already registered' });
+    }
+    
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
     const donor = new Donor({
       name: name || aadhaarData.name,
       age: parseInt(age) || aadhaarData.age,
       gender: gender || aadhaarData.gender,
       bloodGroup: bloodReportData.bloodGroup,
       phone,
-      password,
+      email,
+      password: hashedPassword,
       address,
       location: {
         type: 'Point',
@@ -227,12 +302,22 @@ router.post('/register', upload.fields([
     
     await donor.save();
     
+    // Generate JWT token
+    const token = jwt.sign(
+      { id: donor._id, phone: donor.phone },
+      process.env.JWT_SECRET || 'your-secret-key-change-in-production',
+      { expiresIn: '7d' }
+    );
+    
     res.status(201).json({
       message: 'Donor registered successfully',
+      token,
       donor: {
         id: donor._id,
         name: donor.name,
         bloodGroup: donor.bloodGroup,
+        phone: donor.phone,
+        email: donor.email,
         extractedData: {
           aadhaar: { number: aadhaarData.aadhaarNumber, name: aadhaarData.name, method: aadhaarData.method },
           bloodReport: { bloodGroup: bloodReportData.bloodGroup, method: bloodReportData.method }
@@ -242,6 +327,51 @@ router.post('/register', upload.fields([
   } catch (error) {
     console.error('Donor registration error:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Login donor with password
+router.post('/login-password', async (req, res) => {
+  try {
+    const { phone, password } = req.body;
+    
+    if (!phone || !password) {
+      return res.status(400).json({ error: 'Phone number and password are required' });
+    }
+    
+    const donor = await Donor.findOne({ phone });
+    if (!donor) {
+      return res.status(401).json({ error: 'Invalid phone number or password' });
+    }
+    
+    const isPasswordValid = await bcrypt.compare(password, donor.password);
+    if (!isPasswordValid) {
+      return res.status(401).json({ error: 'Invalid phone number or password' });
+    }
+    
+    // Generate JWT token
+    const token = jwt.sign(
+      { id: donor._id, phone: donor.phone },
+      process.env.JWT_SECRET || 'your-secret-key-change-in-production',
+      { expiresIn: '7d' }
+    );
+    
+    res.json({
+      success: true,
+      message: 'Login successful',
+      token,
+      donor: {
+        id: donor._id,
+        name: donor.name,
+        bloodGroup: donor.bloodGroup,
+        phone: donor.phone,
+        email: donor.email,
+        address: donor.address
+      }
+    });
+  } catch (error) {
+    console.error('Donor login error:', error);
+    res.status(500).json({ error: 'Login failed. Please try again.' });
   }
 });
 

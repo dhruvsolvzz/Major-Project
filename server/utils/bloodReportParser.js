@@ -6,18 +6,44 @@ class BloodReportParser {
     const originalText = text;
     const cleanText = text.replace(/\s+/g, ' ').toUpperCase();
     
-    console.log('🔍 ULTIMATE Blood Group Search - Analyzing text...');
+    console.log('🔍 Blood Group Search - Analyzing text...');
     console.log('📄 Text length:', text.length, 'characters');
-    console.log('📄 First 500 chars:', cleanText.substring(0, 500));
     
+    // ============================================
+    // STEP -1: Check for "Final Blood Group" pattern (common in lab reports)
+    // ============================================
+    console.log('🔍 Checking for Final Blood Group pattern...');
+    
+    const finalBGPatterns = [
+      /FINAL\s*BLOOD\s*GROUP\s*[:\|\s]*([ABO]{1,2})\s*([+\-])/i,
+      /FINAL\s*BLOOD\s*GROUP\s*[:\|\s]*(A\+|A\-|B\+|B\-|O\+|O\-|AB\+|AB\-)/i,
+      /BLOOD\s*GROUP\s*[:\|\s]*FINAL\s*[:\|\s]*(A\+|A\-|B\+|B\-|O\+|O\-|AB\+|AB\-)/i,
+    ];
+    
+    for (const pattern of finalBGPatterns) {
+      const match = cleanText.match(pattern);
+      if (match) {
+        let bloodGroup;
+        if (match[2]) {
+          bloodGroup = match[1].toUpperCase() + match[2];
+        } else {
+          bloodGroup = match[1].toUpperCase();
+        }
+        console.log('✓ Found Final Blood Group:', bloodGroup);
+        if (this.isValidBloodGroup(bloodGroup)) {
+          return bloodGroup;
+        }
+      }
+    }
+
     // ============================================
     // STEP 0: Special handling for separate ABO + Rh Factor lines
     // ============================================
     // Format: "ABO Group: A" on one line, "Rh Factor: Positive" on another
     console.log('🔍 Step 0: Checking for separate ABO + Rh lines...');
     
-    const aboMatch = cleanText.match(/ABO\s*GROUP\s*[:\-=]?\s*([ABO]{1,2})\b/i);
-    const rhMatch = cleanText.match(/RH\s*FACTOR\s*[:\-=]?\s*(POSITIVE|NEGATIVE|POS|NEG|\+VE|\-VE)/i);
+    const aboMatch = cleanText.match(/ABO\s*(?:BLOOD\s*)?GROUP\s*[:\|\-=]?\s*([ABO]{1,2})\b/i);
+    const rhMatch = cleanText.match(/RH\s*(?:\(D\)\s*)?FACTOR\s*[:\|\-=]?\s*(POSITIVE|NEGATIVE|POS|NEG|\+VE|\-VE|\(\+\)|\(\-\)|\+|\-)/i);
     
     console.log('  ABO Match:', aboMatch ? aboMatch[0] : 'Not found');
     console.log('  Rh Match:', rhMatch ? rhMatch[0] : 'Not found');
@@ -323,28 +349,49 @@ class BloodReportParser {
     return valid.includes(bloodGroup);
   }
   
-  // Extract name
+  // Extract name - handles table formats like "Name | Akshat Kumar"
   extractName(text) {
     const patterns = [
-      /(?:NAME|PATIENT\s*NAME|NAME\s*OF\s*PATIENT)\s*[:\-]?\s*([A-Z][A-Z\s\.]+)/i,
-      /(?:MR\.|MRS\.|MS\.)\s*([A-Z][A-Z\s\.]+)/i
+      // Table format with pipe separator
+      /\bNAME\s*[\|\:\-\s]+\s*([A-Za-z][A-Za-z\s\.]+?)(?:\n|\r|$|Gender|Date|Age|\|)/i,
+      // Standard formats
+      /(?:PATIENT\s*NAME|NAME\s*OF\s*PATIENT)\s*[:\-\|]?\s*([A-Za-z][A-Za-z\s\.]+)/i,
+      /(?:NAME)\s*[:\-\|]?\s*([A-Za-z][A-Za-z\s\.]+)/i,
+      // With titles
+      /(?:MR\.|MRS\.|MS\.)\s*([A-Za-z][A-Za-z\s\.]+)/i,
+      // Patient: Name format
+      /PATIENT\s*[:\-\|]?\s*([A-Za-z][A-Za-z\s\.]+)/i,
     ];
     
     for (const pattern of patterns) {
       const match = text.match(pattern);
       if (match) {
-        return match[1].trim();
+        let name = match[1].trim();
+        // Clean up - remove trailing words that aren't part of name
+        name = name.replace(/\s*(Male|Female|Gender|Date|Age|Years|Yrs).*$/i, '').trim();
+        // Validate it looks like a name (2+ chars, not just numbers)
+        if (name.length >= 2 && /[A-Za-z]{2,}/.test(name)) {
+          console.log('✓ Found name:', name);
+          return name;
+        }
       }
     }
     
     return null;
   }
   
-  // Extract age
+  // Extract age - handles table formats like "Age | 21 Years"
   extractAge(text) {
     const patterns = [
-      /AGE\s*[:\-]?\s*(\d{1,3})\s*(?:YEARS|YRS|Y)?/i,
-      /(\d{1,3})\s*(?:YEARS|YRS|Y)\s*(?:OLD)?/i
+      // Table format with pipe separator
+      /\bAGE\s*[\|\:\-\s]+\s*(\d{1,3})\s*(?:YEARS?|YRS?|Y)?/i,
+      // Standard formats
+      /AGE\s*[:\-\|]?\s*(\d{1,3})\s*(?:YEARS?|YRS?|Y)?/i,
+      /AGE\s*\/\s*SEX\s*[:\-\|]?\s*(\d{1,3})/i,
+      // Years format
+      /(\d{1,3})\s*(?:YEARS?|YRS)\s*(?:OLD)?/i,
+      // Age in brackets
+      /\(\s*(\d{1,3})\s*(?:Y|YRS?|YEARS?)?\s*\)/i,
     ];
     
     for (const pattern of patterns) {
@@ -352,6 +399,7 @@ class BloodReportParser {
       if (match) {
         const age = parseInt(match[1]);
         if (age > 0 && age < 120) {
+          console.log('✓ Found age:', age);
           return age;
         }
       }

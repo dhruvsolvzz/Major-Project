@@ -4,6 +4,10 @@ const multer = require('multer');
 const path = require('path');
 const Needer = require('../models/Needer');
 const hybridExtractor = require('../utils/hybridExtractor');
+const { generateOTP, sendOTP } = require('../utils/smsService');
+const emailService = require('../services/emailService');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -14,40 +18,97 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ 
+const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 }
 });
 
-// Login route
-router.post('/login', async (req, res) => {
+// Send OTP for signup
+router.post('/send-signup-otp', async (req, res) => {
   try {
-    const { aadhaarNumber, password } = req.body;
-    if (!aadhaarNumber || !password) {
-      return res.status(400).json({ error: 'Aadhaar number and password are required' });
+    const { phone, email } = req.body;
+    if (!phone || !email) {
+      return res.status(400).json({ error: 'Phone number and email are required' });
     }
-    const needer = await Needer.findOne({ aadhaarNumber });
-    if (!needer) {
-      return res.status(401).json({ error: 'Invalid Aadhaar number or password' });
+
+    // Check if phone or email already exists
+    const existingPhone = await Needer.findOne({ phone });
+    const existingEmail = await Needer.findOne({ email });
+
+    if (existingPhone) {
+      return res.status(400).json({ error: 'Phone number already registered' });
     }
-    if (needer.password !== password) {
-      return res.status(401).json({ error: 'Invalid Aadhaar number or password' });
+    if (existingEmail) {
+      return res.status(400).json({ error: 'Email already registered' });
     }
-    res.json({
-      success: true,
-      message: 'Login successful',
-      needer: {
-        id: needer._id,
-        name: needer.name,
-        requiredBloodGroup: needer.requiredBloodGroup,
-        phone: needer.phone,
-        aadhaarNumber: needer.aadhaarNumber,
-        urgency: needer.urgency
-      }
-    });
+
+    const otp = generateOTP();
+    console.log(`Generated OTP for registration (Needer): ${otp}`);
+
+    res.json({ success: true, message: 'OTP logged in console for development' });
   } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ error: 'Login failed. Please try again.' });
+    console.error('Send OTP error:', error);
+    res.status(500).json({ error: 'Failed to log OTP. Please try again.' });
+  }
+});
+
+// Forgot Password - Send OTP
+router.post('/forgot-password/send-otp', async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) {
+      return res.status(400).json({ error: 'Phone number is required' });
+    }
+
+    const needer = await Needer.findOne({ phone });
+    if (!needer) {
+      return res.status(404).json({ error: 'Phone number not registered' });
+    }
+
+    const otp = generateOTP();
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    await Needer.updateOne(
+      { phone },
+      { $set: { otp, otpExpiry } }
+    );
+
+    console.log(`Generated OTP for forgot password (Needer): ${otp}`);
+
+    res.json({ success: true, message: 'OTP logged in console for development' });
+  } catch (error) {
+    console.error('Send OTP error:', error);
+    res.status(500).json({ error: 'Failed to log OTP. Please try again.' });
+  }
+});
+
+// Forgot Password - Verify OTP and Reset Password
+router.post('/forgot-password/reset', async (req, res) => {
+  try {
+    const { phone, otp, newPassword } = req.body;
+    if (!phone || !otp || !newPassword) {
+      return res.status(400).json({ error: 'Phone number, OTP, and new password are required' });
+    }
+
+    const needer = await Needer.findOne({ phone });
+    if (!needer) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (needer.otp !== otp || needer.otpExpiry < new Date()) {
+      return res.status(401).json({ error: 'Invalid or expired OTP' });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    needer.password = hashedPassword;
+    needer.otp = undefined;
+    needer.otpExpiry = undefined;
+    await needer.save();
+
+    res.json({ success: true, message: 'Password reset successful' });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ error: 'Failed to reset password. Please try again.' });
   }
 });
 
@@ -67,9 +128,9 @@ router.post('/extract-blood-report', upload.single('bloodReport'), async (req, r
   try {
     if (!req.file) return res.status(400).json({ success: false, error: 'No file' });
     const data = await hybridExtractor.extractBloodReport(req.file.path);
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       bloodReportData: {
         bloodGroup: data.bloodGroup || null,
         patientName: data.patientName || data.name || null,
@@ -110,7 +171,7 @@ router.post('/preview', upload.fields([
         try {
           const bloodResult = await hybridExtractor.extractBloodGroup(req.files.bloodReport[0].path);
           bloodReportData = { bloodGroup: bloodResult.bloodGroup, method: bloodResult.method };
-        } catch (e) {}
+        } catch (e) { }
       }
     }
 
@@ -144,15 +205,15 @@ router.post('/register', upload.fields([
   { name: 'bloodReport', maxCount: 1 }
 ]), async (req, res) => {
   try {
-    const { name, age, gender, phone, password, address, requiredBloodGroup, urgency, latitude, longitude } = req.body;
-    
+    const { name, age, gender, phone, email, password, address, requiredBloodGroup, urgency, latitude, longitude } = req.body;
+
     if (!req.files || !req.files.aadhaar) {
       return res.status(400).json({ error: 'Aadhaar document is required' });
     }
-    
+
     const aadhaarPath = req.files.aadhaar[0].path;
     let bloodReportData = null;
-    
+
     if (req.files.bloodReport) {
       console.log('🤖 Extracting blood report...');
       const extractedReport = await hybridExtractor.extractBloodReport(req.files.bloodReport[0].path);
@@ -164,29 +225,43 @@ router.post('/register', upload.fields([
         source: extractedReport.method || 'hybrid'
       };
     }
-    
+
     console.log('🤖 Extracting Aadhaar...');
     const aadhaarData = await hybridExtractor.extractAadhaar(aadhaarPath);
-    
+
     if (!aadhaarData.aadhaarNumber || !aadhaarData.name) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Could not extract required data from Aadhaar card',
         hint: 'Please ensure the Aadhaar card image is clear'
       });
     }
-    
+
     const existing = await Needer.findOne({ aadhaarNumber: aadhaarData.aadhaarNumber });
     if (existing) {
       return res.status(400).json({ error: 'Aadhaar already registered' });
     }
-    
+
+    // Check if phone or email already exists
+    const existingPhone = await Needer.findOne({ phone });
+    const existingEmail = await Needer.findOne({ email });
+    if (existingPhone) {
+      return res.status(400).json({ error: 'Phone number already registered' });
+    }
+    if (existingEmail) {
+      return res.status(400).json({ error: 'Email already registered' });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
     const needer = new Needer({
       name: name || aadhaarData.name,
       age: parseInt(age) || aadhaarData.age,
       gender: gender || aadhaarData.gender,
       requiredBloodGroup,
       phone,
-      password,
+      email,
+      password: hashedPassword,
       address,
       urgency: urgency || 'Medium',
       location: {
@@ -204,15 +279,30 @@ router.post('/register', upload.fields([
       bloodReportFile: req.files.bloodReport ? req.files.bloodReport[0].path : null,
       bloodReportData: bloodReportData
     });
-    
+
     await needer.save();
-    
+
+    // Send welcome email
+    if (email) {
+      emailService.sendWelcomeEmail(email, needer.name, 'needer').catch(console.error);
+    }
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { id: needer._id, phone: needer.phone },
+      process.env.JWT_SECRET || 'your-secret-key-change-in-production',
+      { expiresIn: '7d' }
+    );
+
     res.status(201).json({
       message: 'Needer registered successfully',
+      token,
       needer: {
         id: needer._id,
         name: needer.name,
         requiredBloodGroup: needer.requiredBloodGroup,
+        phone: needer.phone,
+        email: needer.email,
         extractedData: {
           aadhaar: { number: aadhaarData.aadhaarNumber, name: aadhaarData.name, method: aadhaarData.method },
           bloodReport: bloodReportData
@@ -222,6 +312,52 @@ router.post('/register', upload.fields([
   } catch (error) {
     console.error('Needer registration error:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Login needer with password
+router.post('/login-password', async (req, res) => {
+  try {
+    const { phone, password } = req.body;
+
+    if (!phone || !password) {
+      return res.status(400).json({ error: 'Phone number and password are required' });
+    }
+
+    const needer = await Needer.findOne({ phone });
+    if (!needer) {
+      return res.status(401).json({ error: 'Invalid phone number or password' });
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, needer.password);
+    if (!isPasswordValid) {
+      return res.status(401).json({ error: 'Invalid phone number or password' });
+    }
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { id: needer._id, phone: needer.phone },
+      process.env.JWT_SECRET || 'your-secret-key-change-in-production',
+      { expiresIn: '7d' }
+    );
+
+    res.json({
+      success: true,
+      message: 'Login successful',
+      token,
+      needer: {
+        id: needer._id,
+        name: needer.name,
+        requiredBloodGroup: needer.requiredBloodGroup,
+        phone: needer.phone,
+        email: needer.email,
+        address: needer.address,
+        urgency: needer.urgency
+      }
+    });
+  } catch (error) {
+    console.error('Needer login error:', error);
+    res.status(500).json({ error: 'Login failed. Please try again.' });
   }
 });
 
