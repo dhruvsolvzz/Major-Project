@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FaHeart, FaHandHoldingHeart, FaSearch, FaFilter, FaMapMarkerAlt, FaPhoneAlt, FaUser, FaSortAmountDown, FaFileAlt } from 'react-icons/fa';
 import { LogoIcon } from '../components/Icons';
+import API_URL from '../config/api';
 
 const Matchmaking = () => {
   const [donors, setDonors] = useState([]);
@@ -22,8 +23,8 @@ const Matchmaking = () => {
   const fetchData = async () => {
     try {
       const [donorsRes, needersRes] = await Promise.all([
-        fetch('http://localhost:5000/api/donors'),
-        fetch('http://localhost:5000/api/needers')
+        fetch(`${API_URL}/donors`),
+        fetch(`${API_URL}/needers`)
       ]);
 
       setDonors(await donorsRes.json() || []);
@@ -38,8 +39,8 @@ const Matchmaking = () => {
   const findMatches = async (id) => {
     try {
       const endpoint = mode === 'needer'
-        ? `http://localhost:5000/api/match/needer/${id}?maxDistance=${radius}`
-        : `http://localhost:5000/api/match/donor/${id}?maxDistance=${radius}`;
+        ? `${API_URL}/match/needer/${id}?maxDistance=${radius}`
+        : `${API_URL}/match/donor/${id}?maxDistance=${radius}`;
 
       const res = await fetch(endpoint);
       const data = await res.json();
@@ -67,7 +68,7 @@ const Matchmaking = () => {
       findMatches(selected._id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [radius, sortBy]);
+  }, [radius, sortBy, selected]);
 
   const openMap = (coords) => {
     const [lng, lat] = coords;
@@ -165,8 +166,8 @@ const Matchmaking = () => {
                   <button
                     onClick={() => setSortBy('distance')}
                     className={`flex-1 px-4 py-2 rounded-lg text-xs font-bold border transition-colors ${sortBy === 'distance'
-                        ? 'bg-blue-50 border-blue-200 text-blue-700'
-                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                      ? 'bg-blue-50 border-blue-200 text-blue-700'
+                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                       }`}
                   >
                     Distance
@@ -174,8 +175,8 @@ const Matchmaking = () => {
                   <button
                     onClick={() => setSortBy('score')}
                     className={`flex-1 px-4 py-2 rounded-lg text-xs font-bold border transition-colors ${sortBy === 'score'
-                        ? 'bg-green-50 border-green-200 text-green-700'
-                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                      ? 'bg-green-50 border-green-200 text-green-700'
+                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                       }`}
                   >
                     Compatibility
@@ -216,8 +217,8 @@ const Matchmaking = () => {
                       key={person._id}
                       onClick={() => setSelected(person)}
                       className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${selected?._id === person._id
-                          ? 'border-red-500 bg-red-50 shadow-md ring-1 ring-red-500'
-                          : 'border-slate-100 hover:border-red-200 hover:bg-slate-50'
+                        ? 'border-red-500 bg-red-50 shadow-md ring-1 ring-red-500'
+                        : 'border-slate-100 hover:border-red-200 hover:bg-slate-50'
                         }`}
                     >
                       <div className="flex justify-between items-start">
@@ -363,7 +364,7 @@ const Matchmaking = () => {
                               </a>
                               {person.bloodReportFile && (
                                 <button
-                                  onClick={() => window.open(`http://localhost:5000/api/${mode === 'needer' ? 'donors' : 'needers'}/blood-report/${person._id}`, '_blank')}
+                                  onClick={() => window.open(`${API_URL}/${mode === 'needer' ? 'donors' : 'needers'}/blood-report/${person._id}`, '_blank')}
                                   title="View Report"
                                   className="w-10 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg flex items-center justify-center"
                                 >

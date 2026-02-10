@@ -63,7 +63,7 @@ router.post('/donor/signup', validate(signupSchema), async (req, res) => {
             age: 0,
             gender: 'Other',
             bloodGroup: 'O+',
-            phone: '',
+            phone: `TEMP_${Date.now()}_${Math.random().toString(36).substring(7)}`,
             address: '',
             aadhaarNumber: `TEMP_${Date.now()}`,
             location: {
@@ -150,7 +150,7 @@ router.post('/needer/signup', validate(signupSchema), async (req, res) => {
             age: 0,
             gender: 'Other',
             requiredBloodGroup: 'O+',
-            phone: '',
+            phone: `TEMP_${Date.now()}_${Math.random().toString(36).substring(7)}`,
             address: '',
             aadhaarNumber: `TEMP_${Date.now()}`,
             location: {
@@ -342,7 +342,7 @@ router.get('/verify-email/:token', async (req, res) => {
 
         // Send welcome email
         try {
-            await emailService.sendWelcomeEmail(user.email, user.name);
+            await emailService.sendWelcomeEmail(user.email, user.name, userType);
         } catch (emailError) {
             console.error('Failed to send welcome email:', emailError);
         }

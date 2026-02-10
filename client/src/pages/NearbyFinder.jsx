@@ -6,6 +6,7 @@ import 'leaflet/dist/leaflet.css';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { FaUser, FaSearchLocation, FaMapMarkerAlt, FaPhoneAlt, FaTint, FaFilter, FaSortAmountDown, FaFileAlt } from 'react-icons/fa';
 import { LogoIcon } from '../components/Icons';
+import API_URL from '../config/api';
 
 // Custom Marker Icons
 const createCustomIcon = (color) => {
@@ -83,13 +84,13 @@ const NearbyFinder = () => {
     try {
       // Fetch nearby donors
       const donorsRes = await fetch(
-        `http://localhost:5000/api/donors/nearby?latitude=${location.lat}&longitude=${location.lng}&maxDistance=50000`
+        `${API_URL}/donors/nearby?latitude=${location.lat}&longitude=${location.lng}&maxDistance=50000`
       );
       const donorsData = await donorsRes.json();
       setDonors(Array.isArray(donorsData) ? donorsData : []);
 
       // Fetch all needers (filtering logic simplified for demo)
-      const needersRes = await fetch('http://localhost:5000/api/needers');
+      const needersRes = await fetch(`${API_URL}/needers`);
       const needersData = await needersRes.json();
       setNeeders(Array.isArray(needersData) ? needersData : []);
 
@@ -246,7 +247,7 @@ const NearbyFinder = () => {
 
                   <div className="grid grid-cols-2 gap-2 mt-2">
                     <button
-                      onClick={() => item.bloodReportFile ? window.open(`http://localhost:5000/api/${viewType}/blood-report/${item._id}`, '_blank') : alert('No blood report available')}
+                      onClick={() => item.bloodReportFile ? window.open(`${API_URL}/${viewType}/blood-report/${item._id}`, '_blank') : alert('No blood report available')}
                       className="flex items-center justify-center gap-2 py-2 rounded-lg bg-slate-50 text-slate-700 text-xs font-bold hover:bg-slate-100 transition-colors"
                     >
                       <FaFileAlt /> View Report

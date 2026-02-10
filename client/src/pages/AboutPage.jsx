@@ -2,10 +2,12 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { FaHeart, FaHandHoldingHeart, FaUsers, FaGlobeAsia } from 'react-icons/fa';
 import Footer from '../components/Footer';
+import Navbar from '../components/Navbar';
 
 const AboutPage = () => {
     return (
         <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
+            <Navbar />
 
             {/* Hero Section */}
             <section className="relative py-24 lg:py-32 bg-slate-900 text-white overflow-hidden">

@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import API_URL from '../config/api';
+import Navbar from '../components/Navbar';
 
 const ForgotPassword = () => {
   const navigate = useNavigate();
@@ -20,7 +22,7 @@ const ForgotPassword = () => {
     setSuccess('');
 
     try {
-      const response = await fetch(`http://localhost:5000/api/${userType}/forgot-password/send-otp`, {
+      const response = await fetch(`${API_URL}/${userType}/forgot-password/send-otp`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -63,7 +65,7 @@ const ForgotPassword = () => {
     }
 
     try {
-      const response = await fetch(`http://localhost:5000/api/${userType}/forgot-password/reset`, {
+      const response = await fetch(`${API_URL}/${userType}/forgot-password/reset`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -91,23 +93,9 @@ const ForgotPassword = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
-      {/* Header */}
-      <nav className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <Link to="/" className="flex items-center space-x-3 group">
-            <div className="bg-gradient-to-br from-red-500 to-orange-500 p-2 rounded-xl shadow-lg">
-              <svg className="h-6 w-6 text-white" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <span className="text-2xl font-bold bg-gradient-to-r from-red-600 to-orange-600 bg-clip-text text-transparent">
-              RedBridge
-            </span>
-          </Link>
-        </div>
-      </nav>
+      <Navbar />
 
-      <div className="max-w-md mx-auto px-4 py-12">
+      <div className="max-w-md mx-auto px-4 py-12 pt-32">
         <div className="mb-8 text-center">
           <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl shadow-lg mb-4">
             <svg className="h-10 w-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -155,8 +143,8 @@ const ForgotPassword = () => {
                     type="button"
                     onClick={() => setUserType('donors')}
                     className={`p-4 rounded-xl border-2 transition-all ${userType === 'donors'
-                        ? 'border-red-500 bg-red-50 text-red-700'
-                        : 'border-gray-200 hover:border-gray-300'
+                      ? 'border-red-500 bg-red-50 text-red-700'
+                      : 'border-gray-200 hover:border-gray-300'
                       }`}
                   >
                     <svg className="h-8 w-8 mx-auto mb-2 text-red-500" fill="currentColor" viewBox="0 0 20 20">
@@ -168,8 +156,8 @@ const ForgotPassword = () => {
                     type="button"
                     onClick={() => setUserType('needers')}
                     className={`p-4 rounded-xl border-2 transition-all ${userType === 'needers'
-                        ? 'border-orange-500 bg-orange-50 text-orange-700'
-                        : 'border-gray-200 hover:border-gray-300'
+                      ? 'border-orange-500 bg-orange-50 text-orange-700'
+                      : 'border-gray-200 hover:border-gray-300'
                       }`}
                   >
                     <svg className="h-8 w-8 mx-auto mb-2 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">

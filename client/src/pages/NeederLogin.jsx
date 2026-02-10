@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useToast } from '../components/Toast';
+import API_URL from '../config/api';
 
 const NeederLogin = () => {
   const navigate = useNavigate();
@@ -13,10 +14,9 @@ const NeederLogin = () => {
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
 
     try {
-      const response = await fetch('http://localhost:5000/api/needers/login-password', {
+      const response = await fetch(`${API_URL}/needers/login-password`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

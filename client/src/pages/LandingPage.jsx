@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { FaHeartbeat, FaSearchLocation, FaUserFriends, FaHandHoldingHeart, FaMapMarkedAlt } from 'react-icons/fa';
 import Footer from '../components/Footer';
 import AnimatedCounter from '../components/AnimatedCounter';
+import Navbar from '../components/Navbar';
 
 const LandingPage = () => {
   const navigate = useNavigate();
@@ -39,33 +40,7 @@ const LandingPage = () => {
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 overflow-x-hidden">
       {/* Navbar */}
-      <nav className="fixed w-full z-50 bg-white/80 backdrop-blur-md border-b border-slate-200/50 transition-all duration-300">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-20">
-            <Link to="/" className="flex items-center space-x-3 group">
-              <div className="bg-gradient-to-br from-red-500 to-orange-500 p-2.5 rounded-xl shadow-lg group-hover:scale-105 transition-transform">
-                <FaHeartbeat className="h-6 w-6 text-white" />
-              </div>
-              <span className="text-2xl font-bold bg-gradient-to-r from-red-600 to-orange-600 bg-clip-text text-transparent">
-                RedBridge
-              </span>
-            </Link>
-            <div className="hidden md:flex items-center space-x-8">
-              <Link to="/about" className="text-slate-600 hover:text-red-600 font-medium transition-colors">About</Link>
-              <Link to="/nearby" className="text-slate-600 hover:text-red-600 font-medium transition-colors">Find Centers</Link>
-              <Link to="/matchmaking" className="text-slate-600 hover:text-red-600 font-medium transition-colors">Smart Match</Link>
-              <div className="flex items-center space-x-4 pl-4 border-l border-slate-200">
-                <Link to="/donor-login" className="text-slate-700 hover:text-red-600 font-semibold transition-colors">
-                  Login
-                </Link>
-                <Link to="/donor-registration" className="bg-red-600 text-white px-5 py-2.5 rounded-full font-semibold hover:bg-red-700 hover:shadow-lg transition-all transform hover:-translate-y-0.5">
-                  Donate Now
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <Navbar />
 
       {/* Hero Section */}
       <section className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden">

@@ -9,15 +9,15 @@ router.get('/needer/:neederId', async (req, res) => {
   try {
     const { neederId } = req.params;
     const { maxDistance = 20 } = req.query;
-    
+
     const needer = await Needer.findById(neederId);
     if (!needer) {
       return res.status(404).json({ error: 'Needer not found' });
     }
-    
+
     const donors = await Donor.find({ isActive: true });
     const matches = matchingAlgorithm.matchDonorsForNeeder(needer, donors, parseFloat(maxDistance));
-    
+
     res.json({
       needer: {
         id: needer._id,
@@ -32,7 +32,7 @@ router.get('/needer/:neederId', async (req, res) => {
           bloodGroup: m.donor.bloodGroup,
           phone: m.donor.phone,
           address: m.donor.address,
-          aadhaarLast4: m.donor.aadhaarNumber.slice(-4),
+          aadhaarLast4: (m.donor.aadhaarNumber && !m.donor.aadhaarNumber.startsWith('TEMP_')) ? m.donor.aadhaarNumber.slice(-4) : 'N/A',
           location: m.donor.location
         },
         distance: m.distance,
@@ -49,14 +49,14 @@ router.get('/donor/:donorId', async (req, res) => {
   try {
     const { donorId } = req.params;
     const { maxDistance = 20 } = req.query;
-    
+
     const donor = await Donor.findById(donorId);
     if (!donor) {
       return res.status(404).json({ error: 'Donor not found' });
     }
-    
+
     const [donorLon, donorLat] = donor.location.coordinates;
-    
+
     // Find needers who can receive this blood group
     const needers = await Needer.find({ isActive: true });
     const matches = needers
@@ -71,7 +71,7 @@ router.get('/donor/:donorId', async (req, res) => {
       })
       .filter(m => m.distance <= parseFloat(maxDistance))
       .sort((a, b) => a.distance - b.distance);
-    
+
     res.json({
       donor: {
         id: donor._id,

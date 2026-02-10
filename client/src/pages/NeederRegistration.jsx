@@ -19,6 +19,7 @@ const NeederRegistration = () => {
         age: '',
         gender: 'Male',
         phone: '',
+        email: '',
         requiredBloodGroup: '',
         urgency: 'Medium',
 
@@ -108,7 +109,8 @@ const NeederRegistration = () => {
         formData.append(type, file);
 
         try {
-            const response = await fetch(`${API_URL}/needers/extract-${type}`, {
+            const apiType = type === 'bloodReport' ? 'blood-report' : type;
+            const response = await fetch(`${API_URL}/needers/extract-${apiType}`, {
                 method: 'POST',
                 body: formData
             });
@@ -127,7 +129,7 @@ const NeederRegistration = () => {
                         name: data.aadhaarData.name || prev.name,
                         age: data.aadhaarData.age || prev.age,
                         gender: data.aadhaarData.gender || prev.gender,
-                        aadhaarNumber: data.aadhaarData.number || prev.aadhaarNumber
+                        aadhaarNumber: data.aadhaarData.aadhaarNumber || prev.aadhaarNumber
                     }));
                     toast.success('Aadhaar details extracted successfully!');
                 }
@@ -146,7 +148,7 @@ const NeederRegistration = () => {
     const validateStep = (step) => {
         switch (step) {
             case 1:
-                if (!formData.name || !formData.age || !formData.phone) {
+                if (!formData.name || !formData.age || !formData.phone || !formData.email) {
                     toast.error('Please fill in all personal information');
                     return false;
                 }
@@ -209,6 +211,7 @@ const NeederRegistration = () => {
 
         const data = new FormData();
         Object.keys(formData).forEach(key => {
+            if (key === 'confirmPassword') return; // Don't send to server
             if (formData[key]) data.append(key, formData[key]);
         });
         if (files.aadhaar) data.append('aadhaar', files.aadhaar);
@@ -222,9 +225,16 @@ const NeederRegistration = () => {
 
             const result = await response.json();
 
-            if (response.ok && result.success) {
+            if (response.ok) {
+                // Auto-login: store token and user data
+                if (result.token) {
+                    localStorage.setItem('neederToken', result.token);
+                }
+                if (result.needer) {
+                    localStorage.setItem('neederData', JSON.stringify(result.needer));
+                }
                 toast.success('Registration successful! Welcome to RedBridge.');
-                setTimeout(() => navigate('/needer-login'), 2000);
+                setTimeout(() => navigate('/needers'), 2000);
             } else {
                 toast.error(result.error || 'Registration failed');
             }
@@ -346,6 +356,21 @@ const NeederRegistration = () => {
                                             required
                                         />
                                     </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-semibold text-slate-700 mb-2">
+                                        Email *
+                                    </label>
+                                    <input
+                                        type="email"
+                                        name="email"
+                                        value={formData.email}
+                                        onChange={handleChange}
+                                        className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-orange-500 focus:ring-4 focus:ring-orange-100 transition-all focus:scale-[1.01] hover:shadow-md"
+                                        placeholder="your@email.com"
+                                        required
+                                    />
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

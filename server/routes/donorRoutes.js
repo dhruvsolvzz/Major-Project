@@ -7,6 +7,7 @@ const hybridExtractor = require('../utils/hybridExtractor');
 const { generateOTP, sendOTP } = require('../utils/smsService');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const emailService = require('../services/emailService');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -18,7 +19,7 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ 
+const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 }
 });
@@ -99,9 +100,9 @@ router.post('/extract-blood-report', upload.single('bloodReport'), async (req, r
   try {
     if (!req.file) return res.status(400).json({ success: false, error: 'No file' });
     const data = await hybridExtractor.extractBloodReport(req.file.path);
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       bloodReportData: {
         bloodGroup: data.bloodGroup || null,
         patientName: data.patientName || data.name || null,
@@ -143,7 +144,7 @@ router.post('/preview', upload.fields([
         try {
           const bloodResult = await hybridExtractor.extractBloodGroup(req.files.bloodReport[0].path);
           bloodReportData = { bloodGroup: bloodResult.bloodGroup, method: bloodResult.method };
-        } catch (e) {}
+        } catch (e) { }
       }
     }
 
@@ -206,17 +207,20 @@ router.post('/register', upload.fields([
 ]), async (req, res) => {
   try {
     const { name, age, gender, phone, email, password, address, latitude, longitude, otp } = req.body;
-    
-    if (!req.files.aadhaar) {
+
+    console.log('📝 Registration request body:', { name, age, gender, phone, email, address, latitude, longitude, bloodGroupSource: req.body.bloodGroupSource, manualBloodGroup: req.body.manualBloodGroup });
+    console.log('📎 Files received:', req.files ? Object.keys(req.files) : 'none');
+
+    if (!req.files || !req.files.aadhaar) {
       return res.status(400).json({ error: 'Aadhaar document is required' });
     }
-    
+
     const aadhaarPath = req.files.aadhaar[0].path;
     const bloodGroupSource = req.body.bloodGroupSource || 'ai';
-    
+
     let bloodGroup;
     let bloodReportData = {};
-    
+
     if (bloodGroupSource === 'manual' && req.body.manualBloodGroup) {
       bloodGroup = req.body.manualBloodGroup;
       bloodReportData = {
@@ -228,34 +232,34 @@ router.post('/register', upload.fields([
       if (!req.files.bloodReport) {
         return res.status(400).json({ error: 'Blood report is required when not using manual entry' });
       }
-      
+
       console.log('🤖 Extracting blood report...');
       bloodReportData = await hybridExtractor.extractBloodReport(req.files.bloodReport[0].path);
-      
+
       if (!bloodReportData.bloodGroup) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: 'Blood group not found in report',
           hint: 'Please ensure blood group is clearly visible'
         });
       }
       bloodGroup = bloodReportData.bloodGroup;
     }
-    
+
     console.log('🤖 Extracting Aadhaar...');
     const aadhaarData = await hybridExtractor.extractAadhaar(aadhaarPath);
-    
+
     if (!aadhaarData.aadhaarNumber || !aadhaarData.name) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Could not extract required data from Aadhaar card',
         hint: 'Please ensure the Aadhaar card image is clear'
       });
     }
-    
+
     const existing = await Donor.findOne({ aadhaarNumber: aadhaarData.aadhaarNumber });
     if (existing) {
       return res.status(400).json({ error: 'Aadhaar already registered' });
     }
-    
+
     // Check if phone or email already exists
     const existingPhone = await Donor.findOne({ phone });
     const existingEmail = await Donor.findOne({ email });
@@ -265,10 +269,10 @@ router.post('/register', upload.fields([
     if (existingEmail) {
       return res.status(400).json({ error: 'Email already registered' });
     }
-    
+
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
-    
+
     const donor = new Donor({
       name: name || aadhaarData.name,
       age: parseInt(age) || aadhaarData.age,
@@ -299,17 +303,23 @@ router.post('/register', upload.fields([
       aadhaarFile: aadhaarPath,
       bloodReportFile: req.files.bloodReport ? req.files.bloodReport[0].path : null
     });
-    
+
     await donor.save();
-    
+
+    // Send welcome email
+    if (email) {
+      emailService.sendWelcomeEmail(email, donor.name, 'donor').catch(console.error);
+    }
+
     // Generate JWT token
     const token = jwt.sign(
       { id: donor._id, phone: donor.phone },
       process.env.JWT_SECRET || 'your-secret-key-change-in-production',
       { expiresIn: '7d' }
     );
-    
+
     res.status(201).json({
+      success: true,
       message: 'Donor registered successfully',
       token,
       donor: {
@@ -318,6 +328,7 @@ router.post('/register', upload.fields([
         bloodGroup: donor.bloodGroup,
         phone: donor.phone,
         email: donor.email,
+        address: donor.address,
         extractedData: {
           aadhaar: { number: aadhaarData.aadhaarNumber, name: aadhaarData.name, method: aadhaarData.method },
           bloodReport: { bloodGroup: bloodReportData.bloodGroup, method: bloodReportData.method }
@@ -334,28 +345,28 @@ router.post('/register', upload.fields([
 router.post('/login-password', async (req, res) => {
   try {
     const { phone, password } = req.body;
-    
+
     if (!phone || !password) {
       return res.status(400).json({ error: 'Phone number and password are required' });
     }
-    
+
     const donor = await Donor.findOne({ phone });
     if (!donor) {
       return res.status(401).json({ error: 'Invalid phone number or password' });
     }
-    
+
     const isPasswordValid = await bcrypt.compare(password, donor.password);
     if (!isPasswordValid) {
       return res.status(401).json({ error: 'Invalid phone number or password' });
     }
-    
+
     // Generate JWT token
     const token = jwt.sign(
       { id: donor._id, phone: donor.phone },
       process.env.JWT_SECRET || 'your-secret-key-change-in-production',
       { expiresIn: '7d' }
     );
-    
+
     res.json({
       success: true,
       message: 'Login successful',

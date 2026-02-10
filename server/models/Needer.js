@@ -22,7 +22,7 @@ const neederSchema = new mongoose.Schema({
     enum: ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'],
     required: true
   },
-  phone: { type: String, required: true },
+  phone: { type: String, required: true, unique: true },
   address: { type: String, required: true },
   urgency: { type: String, enum: ['Low', 'Medium', 'High', 'Critical'], default: 'Medium' },
 

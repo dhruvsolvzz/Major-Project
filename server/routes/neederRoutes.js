@@ -295,6 +295,7 @@ router.post('/register', upload.fields([
     );
 
     res.status(201).json({
+      success: true,
       message: 'Needer registered successfully',
       token,
       needer: {
@@ -303,6 +304,7 @@ router.post('/register', upload.fields([
         requiredBloodGroup: needer.requiredBloodGroup,
         phone: needer.phone,
         email: needer.email,
+        address: needer.address,
         extractedData: {
           aadhaar: { number: aadhaarData.aadhaarNumber, name: aadhaarData.name, method: aadhaarData.method },
           bloodReport: bloodReportData

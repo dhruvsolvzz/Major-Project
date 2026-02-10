@@ -19,6 +19,7 @@ const DonorRegistration = () => {
         age: '',
         gender: 'Male',
         phone: '',
+        email: '',
         bloodGroup: '',
 
         // Step 2: Documents
@@ -113,7 +114,8 @@ const DonorRegistration = () => {
         formData.append(type, file);
 
         try {
-            const response = await fetch(`${API_URL}/donors/extract-${type}`, {
+            const apiType = type === 'bloodReport' ? 'blood-report' : type;
+            const response = await fetch(`${API_URL}/donors/extract-${apiType}`, {
                 method: 'POST',
                 body: formData
             });
@@ -133,7 +135,7 @@ const DonorRegistration = () => {
                         name: data.aadhaarData.name || prev.name,
                         age: data.aadhaarData.age || prev.age,
                         gender: data.aadhaarData.gender || prev.gender,
-                        aadhaarNumber: data.aadhaarData.number || prev.aadhaarNumber
+                        aadhaarNumber: data.aadhaarData.aadhaarNumber || prev.aadhaarNumber
                     }));
                     toast.success('Aadhaar details extracted successfully!');
                 }
@@ -160,7 +162,7 @@ const DonorRegistration = () => {
     const validateStep = (step) => {
         switch (step) {
             case 1:
-                if (!formData.name || !formData.age || !formData.phone) {
+                if (!formData.name || !formData.age || !formData.phone || !formData.email) {
                     toast.error('Please fill in all personal information');
                     return false;
                 }
@@ -227,10 +229,17 @@ const DonorRegistration = () => {
 
         const data = new FormData();
         Object.keys(formData).forEach(key => {
+            if (key === 'confirmPassword') return; // Don't send to server
             if (formData[key]) data.append(key, formData[key]);
         });
         if (files.aadhaar) data.append('aadhaar', files.aadhaar);
-        if (files.bloodReport) data.append('bloodReport', files.bloodReport);
+        if (files.bloodReport) {
+            data.append('bloodReport', files.bloodReport);
+        } else if (formData.bloodGroup) {
+            // Tell the server this is a manual blood group entry
+            data.append('bloodGroupSource', 'manual');
+            data.append('manualBloodGroup', formData.bloodGroup);
+        }
 
         try {
             const response = await fetch(`${API_URL}/donors/register`, {
@@ -240,9 +249,16 @@ const DonorRegistration = () => {
 
             const result = await response.json();
 
-            if (response.ok && result.success) {
+            if (response.ok) {
+                // Auto-login: store token and user data
+                if (result.token) {
+                    localStorage.setItem('donorToken', result.token);
+                }
+                if (result.donor) {
+                    localStorage.setItem('donorData', JSON.stringify(result.donor));
+                }
                 toast.success('Registration successful! Welcome to RedBridge.');
-                setTimeout(() => navigate('/donor-login'), 2000);
+                setTimeout(() => navigate('/donors'), 2000);
             } else {
                 toast.error(result.error || 'Registration failed');
             }
@@ -362,6 +378,21 @@ const DonorRegistration = () => {
                                             required
                                         />
                                     </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-semibold text-slate-700 mb-2">
+                                        Email *
+                                    </label>
+                                    <input
+                                        type="email"
+                                        name="email"
+                                        value={formData.email}
+                                        onChange={handleChange}
+                                        className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-red-500 focus:ring-4 focus:ring-red-100 transition-all focus:scale-[1.01] hover:shadow-md"
+                                        placeholder="your@email.com"
+                                        required
+                                    />
                                 </div>
                             </div>
                         )}
