@@ -619,6 +619,7 @@ const DonorRegistration = () => {
                                             placeholder="Minimum 6 characters"
                                             required
                                         />
+                                        <PasswordStrength password={formData.password} />
                                     </div>
 
                                     <div>
