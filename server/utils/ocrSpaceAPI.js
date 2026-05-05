@@ -16,12 +16,12 @@ class OCRSpaceAPI {
     }
 
     /**
-     * Extract text from image using OCR.space API
-     * @param {string} imagePath - Path to image file
+     * Extract text from image or PDF using OCR.space API
+     * @param {string} filePath - Path to image or PDF file
      * @param {object} options - OCR options
      * @returns {Promise<object>} Extracted text and metadata
      */
-    async extractText(imagePath, options = {}) {
+    async extractText(filePath, options = {}) {
         const {
             language = 'eng',
             isTable = false,
@@ -31,16 +31,29 @@ class OCRSpaceAPI {
             ocrEngine = 2
         } = options;
 
-        console.log(`🔍 OCR.space API: Processing ${path.basename(imagePath)}...`);
+        const ext = path.extname(filePath).toLowerCase().slice(1);
+        const isPDF = ext === 'pdf';
+
+        console.log(`🔍 OCR.space API: Processing ${path.basename(filePath)}${isPDF ? ' (PDF)' : ''}...`);
 
         for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
             try {
                 // Read file as base64
-                const imageBuffer = fs.readFileSync(imagePath);
-                const base64Image = `data:image/${path.extname(imagePath).slice(1)};base64,${imageBuffer.toString('base64')}`;
+                const fileBuffer = fs.readFileSync(filePath);
+
+                // Set correct MIME type based on file extension
+                let mimeType;
+                if (isPDF) {
+                    mimeType = 'application/pdf';
+                } else {
+                    const imageExts = { jpg: 'jpeg', jpeg: 'jpeg', png: 'png', gif: 'gif', bmp: 'bmp', tiff: 'tiff', tif: 'tiff', webp: 'webp' };
+                    mimeType = `image/${imageExts[ext] || ext}`;
+                }
+
+                const base64Data = `data:${mimeType};base64,${fileBuffer.toString('base64')}`;
 
                 const formData = new FormData();
-                formData.append('base64Image', base64Image);
+                formData.append('base64Image', base64Data);
                 formData.append('apikey', this.apiKey);
                 formData.append('language', language);
                 formData.append('isTable', isTable.toString());
@@ -48,6 +61,11 @@ class OCRSpaceAPI {
                 formData.append('scale', scale.toString());
                 formData.append('isOverlayRequired', isOverlayRequired.toString());
                 formData.append('OCREngine', ocrEngine.toString());
+
+                // For PDFs, set filetype so OCR.space processes all pages
+                if (isPDF) {
+                    formData.append('filetype', 'PDF');
+                }
 
                 const response = await axios.post(this.apiUrl, formData, {
                     headers: {

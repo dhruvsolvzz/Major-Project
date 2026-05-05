@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useToast } from '../components/Toast';
 import PasswordStrength from '../components/PasswordStrength';
@@ -44,6 +44,10 @@ const DonorRegistration = () => {
         aadhaar: { loading: false, success: false, data: null },
         bloodReport: { loading: false, success: false, data: null }
     });
+
+    // Ref to always access latest formData in async callbacks (avoids stale closures)
+    const formDataRef = useRef(formData);
+    useEffect(() => { formDataRef.current = formData; }, [formData]);
 
     const steps = [
         { number: 1, title: 'Personal Info', icon: <FaUser /> },
@@ -141,6 +145,27 @@ const DonorRegistration = () => {
                 }
 
                 if (type === 'bloodReport' && data.bloodReportData) {
+                    // Cross-validate name with Aadhaar
+                    const reportName = (data.bloodReportData.patientName || data.bloodReportData.name || '').toLowerCase().trim();
+                    const currentName = formDataRef.current.name || '';
+                    const aadhaarName = currentName.toLowerCase().trim();
+
+                    if (aadhaarName && reportName) {
+                        const aadhaarFirst = aadhaarName.split(/\s+/)[0];
+                        const reportFirst = reportName.split(/\s+/)[0];
+                        const namesMatch = aadhaarName.includes(reportFirst) || reportName.includes(aadhaarFirst);
+
+                        if (!namesMatch) {
+                            toast.error(`Name mismatch! Aadhaar: "${currentName}" vs Blood Report: "${data.bloodReportData.patientName || data.bloodReportData.name}". Please upload documents of the same person.`);
+                            setExtractionStatus(prev => ({
+                                ...prev,
+                                bloodReport: { loading: false, success: false, data: null }
+                            }));
+                            setFiles(prev => ({ ...prev, bloodReport: null }));
+                            return;
+                        }
+                    }
+
                     setFormData(prev => ({
                         ...prev,
                         bloodGroup: data.bloodReportData.bloodGroup || prev.bloodGroup
@@ -233,12 +258,16 @@ const DonorRegistration = () => {
             if (formData[key]) data.append(key, formData[key]);
         });
         if (files.aadhaar) data.append('aadhaar', files.aadhaar);
-        if (files.bloodReport) {
+        if (files.bloodReport && !formData.bloodGroup) {
+            // Blood report file exists but not yet extracted — let server extract
             data.append('bloodReport', files.bloodReport);
         } else if (formData.bloodGroup) {
-            // Tell the server this is a manual blood group entry
+            // Blood group already extracted or entered manually — send directly
             data.append('bloodGroupSource', 'manual');
             data.append('manualBloodGroup', formData.bloodGroup);
+        } else if (files.bloodReport) {
+            // Fallback: send the file for server-side extraction
+            data.append('bloodReport', files.bloodReport);
         }
 
         try {

@@ -86,7 +86,7 @@ class HybridExtractor {
     }
 
     if (!result || !result.aadhaarNumber) {
-      throw new Error('Could not extract Aadhaar number. Please ensure the image is clear and contains valid Aadhaar information.');
+      throw new Error('Could not extract Aadhaar number. Please ensure the image/PDF is clear and contains valid Aadhaar information.');
     }
 
     console.log('📊 Final Aadhaar result:', {

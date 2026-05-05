@@ -1,3 +1,10 @@
+const path = require('path');
+
+// Load comprehensive Indian names dataset (3,276 first names + 925 surnames)
+const indianNames = require('./indianNames.json');
+const FIRST_NAMES_SET = new Set(indianNames.firstNames.map(n => n.toLowerCase()));
+const SURNAMES_SET = new Set(indianNames.surnames.map(n => n.toLowerCase()));
+
 class AadhaarValidator {
 
   // Validate Aadhaar number format
@@ -116,33 +123,116 @@ class AadhaarValidator {
     return null;
   }
 
+  // Clean OCR text by removing institutional/header garbage before name extraction
+  cleanOCRText(text) {
+    let cleaned = text;
+
+    // Remove common Aadhaar header text (with fuzzy OCR spelling variants)
+    const headerPatterns = [
+      /\b(?:ARE\s+TR|HRE\s+HOR|HRE|HOR)\b/gi,
+      /\bGov[eé]?[mr]n?m?e?nt\s+of\s+[Ii]ndia\b/gi,    // Govemment, Government, etc.
+      /\bGOVERNMENT\s+OF\s+INDIA\b/gi,
+      /\bGOVT\.?\s+OF\s+INDIA\b/gi,
+      /\bUNIQUE\s+IDENTIFICATION\s+AUTHORITY\b/gi,
+      /\bUIDAI\b/gi,
+      /\bAADHAAR\b/gi,
+      /\bAADHAR\b/gi,
+      /\b(?:mera\s+)?aadhaar\b/gi,
+      /\benroll(?:ment)?\s+no\.?\b/gi,
+    ];
+
+    for (const pattern of headerPatterns) {
+      cleaned = cleaned.replace(pattern, ' ');
+    }
+
+    return cleaned;
+  }
+
+  // Check if a word looks like OCR garbage (all caps, no vowels, random short strings)
+  isOCRGarbage(word) {
+    const lower = word.toLowerCase();
+
+    // Known institutional/non-name words
+    const excludeWords = [
+      'government', 'govemment', 'india', 'aadhaar', 'aadhar', 'authority',
+      'unique', 'enrollment', 'male', 'female', 'issued', 'download',
+      'date', 'issue', 'year', 'years', 'help', 'uidai', 'vid', 'dob',
+      'birth', 'address', 'the', 'and', 'for', 'has', 'been', 'your',
+      'govt', 'are', 'hre', 'hor', 'sir', 'sire'
+    ];
+    if (excludeWords.includes(lower)) return true;
+
+    // ALL-CAPS words 2-4 chars that have no vowels or look like gibberish
+    if (word.length <= 4 && word === word.toUpperCase() && !/[aeiouAEIOU]/.test(word)) return true;
+
+    // Very short words (1-2 chars) that aren't common name parts
+    const allowedShortWords = ['om', 'aj', 'al'];
+    if (word.length <= 2 && !allowedShortWords.includes(lower)) return true;
+
+    // Common OCR transliteration noise (Hindi artifacts)
+    const ocrNoise = ['sire', 'fe', 'si', 're', 'de', 'le', 'se', 'te', 'ne', 'ke', 'pe', 'be', 'ge', 'he', 'je', 'we', 'ye', 'ze', 'hre', 'hor', 'tre', 'thr'];
+    if (ocrNoise.includes(lower)) return true;
+
+    return false;
+  }
+
   // Extract name from Aadhaar - handles single names and various formats
   extractName(text) {
     console.log('🔍 Extracting name from Aadhaar text...');
 
-    // First, try to find common Indian names directly
-    const commonNames = [
-      'Siddharth', 'Sidharth', 'Rahul', 'Amit', 'Priya', 'Neha', 'Raj', 'Arun', 'Vijay',
-      'Akshat', 'Arjun', 'Rohan', 'Karan', 'Varun', 'Nikhil', 'Ankit', 'Mohit', 'Rohit',
-      'Deepak', 'Suresh', 'Ramesh', 'Mahesh', 'Ganesh', 'Rajesh', 'Mukesh', 'Dinesh',
-      'Sanjay', 'Ajay', 'Ravi', 'Sunil', 'Anil', 'Manoj', 'Vinod', 'Pramod',
-      'Ashok', 'Alok', 'Vivek', 'Abhishek', 'Manish', 'Satish', 'Girish', 'Harish',
-      'Pankaj', 'Neeraj', 'Saurabh', 'Gaurav', 'Vishal', 'Kunal', 'Sumit', 'Puneet',
-      'Aarav', 'Vihaan', 'Aditya', 'Aryan', 'Reyansh', 'Ayaan', 'Krishna', 'Ishaan',
-      'Pooja', 'Anjali', 'Sneha', 'Divya', 'Kavita', 'Sunita', 'Anita', 'Rekha',
-      'Meena', 'Seema', 'Geeta', 'Sita', 'Radha', 'Lakshmi', 'Sarita', 'Mamta',
-      'Shweta', 'Preeti', 'Ritu', 'Nisha', 'Asha', 'Usha', 'Aadhya', 'Ananya',
-      'Prakash', 'Ranjan', 'Kumar', 'Singh', 'Sharma', 'Verma', 'Gupta', 'Jain', 'Agarwal', 'Patel'
-    ];
+    // Step 1: Pre-clean the OCR text to remove institutional headers and noise
+    const cleanedText = this.cleanOCRText(text);
+    console.log('🧹 Cleaned OCR text for name extraction');
 
-    for (const name of commonNames) {
-      const regex = new RegExp(`\\b${name}\\b`, 'i');
-      if (regex.test(text)) {
-        console.log('✅ Found common name:', name);
-        return name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+    // Step 2: Use comprehensive Indian names dataset (3,276 first names + 925 surnames)
+    // Extract all words from the cleaned text and match against known names using Set lookup (O(1))
+    const textWords = cleanedText.match(/\b[A-Za-z]{2,}\b/g) || [];
+
+    // Strategy A: Find consecutive words where first is a known first name and second is a known surname
+    for (let i = 0; i < textWords.length - 1; i++) {
+      const word1 = textWords[i].toLowerCase();
+      const word2 = textWords[i + 1].toLowerCase();
+
+      if (FIRST_NAMES_SET.has(word1) && SURNAMES_SET.has(word2)) {
+        // Check for a third word (some names have 3 parts, e.g., "Ram Prasad Sharma")
+        let fullName = textWords[i].charAt(0).toUpperCase() + textWords[i].slice(1).toLowerCase()
+          + ' ' + textWords[i + 1].charAt(0).toUpperCase() + textWords[i + 1].slice(1).toLowerCase();
+        if (i + 2 < textWords.length && SURNAMES_SET.has(textWords[i + 2].toLowerCase())) {
+          fullName += ' ' + textWords[i + 2].charAt(0).toUpperCase() + textWords[i + 2].slice(1).toLowerCase();
+        }
+        console.log('✅ Found full name (first + surname):', fullName);
+        return fullName;
       }
     }
 
+    // Strategy B: Find a known first name followed by any capitalized word as potential surname
+    for (let i = 0; i < textWords.length - 1; i++) {
+      const word1 = textWords[i].toLowerCase();
+      if (FIRST_NAMES_SET.has(word1) && !this.isOCRGarbage(textWords[i])) {
+        const nextWord = textWords[i + 1];
+        if (nextWord && /^[A-Z]/.test(nextWord) && !this.isOCRGarbage(nextWord) && nextWord.length >= 3) {
+          const fullName = textWords[i].charAt(0).toUpperCase() + textWords[i].slice(1).toLowerCase()
+            + ' ' + nextWord.charAt(0).toUpperCase() + nextWord.slice(1).toLowerCase();
+          console.log('✅ Found name (known first + following word):', fullName);
+          return fullName;
+        }
+        // Return just the first name if no valid surname follows
+        const singleName = textWords[i].charAt(0).toUpperCase() + textWords[i].slice(1).toLowerCase();
+        console.log('✅ Found known first name:', singleName);
+        return singleName;
+      }
+    }
+
+    // Strategy C: Find any known surname that might appear as a standalone identifier
+    for (const word of textWords) {
+      if (SURNAMES_SET.has(word.toLowerCase()) && !this.isOCRGarbage(word) && word.length >= 4) {
+        console.log('✅ Found known surname as name:', word);
+        return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+      }
+    }
+
+
+    // Step 3: Regex-based extraction from cleaned text
     const patterns = [
       // Single English name after Hindi name (like "सिद्धार्थ\nSiddharth")
       /[ऀ-ॿ]+[\s\n]+([A-Z][a-z]+)(?:\s*\n|\s+(?:जन्म|DOB|MALE|FEMALE))/i,
@@ -170,31 +260,27 @@ class AadhaarValidator {
     ];
 
     for (const pattern of patterns) {
-      const match = text.match(pattern);
+      const match = cleanedText.match(pattern);
       if (match) {
         let name = match[1].trim();
         name = name.replace(/\s+/g, ' ');
 
-        // Remove Aadhaar header text prefixes
-        const headerPrefixes = [
-          'ARE TR GOVERNMENT OF INDIA',
-          'GOVERNMENT OF INDIA',
-          'ARE TR',
-          'GOVT OF INDIA',
-          'GOVT',
-          'INDIA'
-        ];
+        // Filter out garbage words from the extracted name
+        const nameWords = name.split(/\s+/);
+        const cleanedWords = nameWords.filter(word => !this.isOCRGarbage(word));
 
-        for (const prefix of headerPrefixes) {
-          if (name.toUpperCase().startsWith(prefix)) {
-            name = name.substring(prefix.length).trim();
-          }
+        if (cleanedWords.length > 0) {
+          name = cleanedWords.join(' ');
+        }
+
+        if (cleanedWords.length > 0) {
+          console.log('🧹 Cleaned name:', nameWords.join(' '), '→', name);
         }
 
         console.log('Found potential name:', name);
 
         // Validate name
-        if (name.length >= 3 && name.length <= 50) {
+        if (name.length >= 2 && name.length <= 50) {
           const excludeWords = ['GOVERNMENT', 'INDIA', 'AADHAAR', 'AADHAR', 'AUTHORITY', 'UNIQUE', 'ENROLLMENT', 'MALE', 'FEMALE', 'ISSUED', 'DOWNLOAD', 'DATE', 'ISSUE', 'YEAR', 'YEARS', 'HELP', 'UIDAI', 'VID'];
           // Must have at least one vowel
           if (!excludeWords.some(word => name.toUpperCase() === word) && /[aeiouAEIOU]/.test(name)) {
@@ -225,7 +311,8 @@ class AadhaarValidator {
   extractDOB(text) {
     console.log('🔍 Extracting DOB from Aadhaar text...');
 
-    const patterns = [
+    // Priority 1: DOB with explicit label (most reliable)
+    const labeledPatterns = [
       // Hindi + English DOB label: "जन्म तिथि/DOB: 07/07/2008"
       /(?:जन्म\s*तिथि\s*[\/\\]?\s*)?DOB\s*[:\-]?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
 
@@ -235,21 +322,73 @@ class AadhaarValidator {
       // Standard DOB patterns
       /(?:DATE\s*OF\s*BIRTH|BIRTH\s*DATE|D\.O\.B\.?)\s*[:\-]?\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})/i,
 
-      // Year of birth
-      /(?:YEAR\s*OF\s*BIRTH|YOB)\s*[:\-]?\s*(\d{4})/i,
-
       // Date pattern near DOB keyword
       /DOB[:\s]*(\d{2}[\/\-\.]\d{2}[\/\-\.]\d{4})/i,
-
-      // Any date in DD/MM/YYYY format (last resort)
-      /\b(\d{2}[\/\-\.]\d{2}[\/\-\.]\d{4})\b/
     ];
 
-    for (const pattern of patterns) {
+    for (const pattern of labeledPatterns) {
       const match = text.match(pattern);
       if (match) {
-        console.log('✅ Found DOB:', match[1]);
-        return match[1];
+        const age = this.calculateAge(match[1]);
+        // Accept labeled DOB if age is plausible (1-120)
+        if (age !== null && age >= 1 && age <= 120) {
+          console.log('✅ Found DOB (labeled):', match[1], '→ age:', age);
+          return match[1];
+        }
+        console.log('⚠️ Labeled DOB found but age implausible:', match[1], '→ age:', age);
+      }
+    }
+
+    // Priority 2: Year of birth
+    const yobMatch = text.match(/(?:YEAR\s*OF\s*BIRTH|YOB)\s*[:\-]?\s*(\d{4})/i);
+    if (yobMatch) {
+      console.log('✅ Found Year of Birth:', yobMatch[1]);
+      return yobMatch[1];
+    }
+
+    // Priority 3: Last resort - find ALL dates in DD/MM/YYYY format,
+    // then pick the one that gives the most plausible age for a person
+    const allDatesRegex = /\b(\d{2}[\/\-\.]\d{2}[\/\-\.]\d{4})\b/g;
+    const allDates = [];
+    let dateMatch;
+
+    // Also collect nearby context to exclude issue/download dates
+    const excludeContexts = /(?:issue|download|print|generated|valid|expiry|vid)/i;
+
+    while ((dateMatch = allDatesRegex.exec(text)) !== null) {
+      const dateStr = dateMatch[1];
+      const age = this.calculateAge(dateStr);
+      // Get ~40 chars before the date for context
+      const contextStart = Math.max(0, dateMatch.index - 40);
+      const context = text.substring(contextStart, dateMatch.index);
+      const isExcluded = excludeContexts.test(context);
+
+      allDates.push({ dateStr, age, context: context.trim(), isExcluded });
+    }
+
+    if (allDates.length > 0) {
+      console.log('📅 All dates found:', allDates.map(d => `${d.dateStr} (age: ${d.age}, excluded: ${d.isExcluded})`));
+
+      // Filter to plausible ages (5-100) and non-excluded
+      const plausible = allDates.filter(d => d.age !== null && d.age >= 5 && d.age <= 100 && !d.isExcluded);
+
+      if (plausible.length > 0) {
+        // Prefer ages in the 10-80 range (most common for Aadhaar holders)
+        const bestMatch = plausible.sort((a, b) => {
+          // Prefer ages closer to the "normal" range center (~30)
+          const aScore = Math.abs(a.age - 30);
+          const bScore = Math.abs(b.age - 30);
+          return aScore - bScore;
+        })[0];
+        console.log('✅ Found DOB (best match):', bestMatch.dateStr, '→ age:', bestMatch.age);
+        return bestMatch.dateStr;
+      }
+
+      // If all are excluded or implausible, try any non-excluded date
+      const nonExcluded = allDates.filter(d => d.age !== null && d.age >= 1 && d.age <= 120 && !d.isExcluded);
+      if (nonExcluded.length > 0) {
+        console.log('✅ Found DOB (fallback):', nonExcluded[0].dateStr, '→ age:', nonExcluded[0].age);
+        return nonExcluded[0].dateStr;
       }
     }
 
@@ -267,12 +406,19 @@ class AadhaarValidator {
       if (parts.length === 3) {
         const day = parseInt(parts[0]);
         const month = parseInt(parts[1]) - 1; // Month is 0-indexed
-        const year = parseInt(parts[2]);
+        let year = parseInt(parts[2]);
 
         // Handle 2-digit years
-        const fullYear = year < 100 ? (year > 50 ? 1900 + year : 2000 + year) : year;
+        if (year < 100) {
+          year = year > 50 ? 1900 + year : 2000 + year;
+        }
 
-        const birthDate = new Date(fullYear, month, day);
+        // Basic date validation
+        if (day < 1 || day > 31 || month < 0 || month > 11 || year < 1900 || year > new Date().getFullYear()) {
+          return null;
+        }
+
+        const birthDate = new Date(year, month, day);
         const today = new Date();
 
         let age = today.getFullYear() - birthDate.getFullYear();
@@ -282,7 +428,7 @@ class AadhaarValidator {
           age--;
         }
 
-        return age > 0 && age < 120 ? age : null;
+        return age >= 0 && age < 120 ? age : null;
       }
     } catch (error) {
       console.error('Error calculating age:', error);
