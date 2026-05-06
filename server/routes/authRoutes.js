@@ -234,6 +234,10 @@ router.post('/donor/login', validate(loginSchema), async (req, res) => {
         // Create response
         const response = authService.createAuthResponse(donor, tokens);
 
+        // Send login notification email (non-blocking)
+        emailService.sendLoginNotificationEmail(donor.email, donor.name || donor.username, 'donor')
+            .catch(err => console.error('Failed to send login notification:', err));
+
         res.json(response);
 
     } catch (error) {
@@ -289,6 +293,10 @@ router.post('/needer/login', validate(loginSchema), async (req, res) => {
 
         // Create response
         const response = authService.createAuthResponse(needer, tokens);
+
+        // Send login notification email (non-blocking)
+        emailService.sendLoginNotificationEmail(needer.email, needer.name || needer.username, 'needer')
+            .catch(err => console.error('Failed to send login notification:', err));
 
         res.json(response);
 

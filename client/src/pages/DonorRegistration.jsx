@@ -88,11 +88,11 @@ const DonorRegistration = () => {
 
     const getAddressFromCoords = async (lat, lng) => {
         const response = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`
+            `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`
         );
         const data = await response.json();
-        if (data && data.display_name) {
-            return data.display_name;
+        if (data && data.city) {
+            return `${data.locality || ''}, ${data.city}, ${data.principalSubdivision}, ${data.countryName}`.replace(/^, /, '');
         }
         return null;
     };
@@ -258,16 +258,14 @@ const DonorRegistration = () => {
             if (formData[key]) data.append(key, formData[key]);
         });
         if (files.aadhaar) data.append('aadhaar', files.aadhaar);
-        if (files.bloodReport && !formData.bloodGroup) {
-            // Blood report file exists but not yet extracted — let server extract
+        if (files.bloodReport) {
             data.append('bloodReport', files.bloodReport);
-        } else if (formData.bloodGroup) {
+        }
+        
+        if (formData.bloodGroup) {
             // Blood group already extracted or entered manually — send directly
             data.append('bloodGroupSource', 'manual');
             data.append('manualBloodGroup', formData.bloodGroup);
-        } else if (files.bloodReport) {
-            // Fallback: send the file for server-side extraction
-            data.append('bloodReport', files.bloodReport);
         }
 
         try {

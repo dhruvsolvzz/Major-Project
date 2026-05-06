@@ -301,6 +301,71 @@ class EmailService {
       return { success: false };
     }
   }
+
+  /**
+   * Send login notification email
+   */
+  async sendLoginNotificationEmail(email, name, userType = 'donor') {
+    if (!this.transporter) {
+      console.log('📧 Email service disabled - Login notification skipped');
+      return { success: true, message: 'Email service disabled' };
+    }
+
+    const time = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+
+    const htmlTemplate = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .header h1 { color: white; margin: 0; font-size: 24px; }
+          .content { background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; }
+          .footer { text-align: center; margin-top: 30px; color: #666; font-size: 14px; }
+          .warning { background: #fee2e2; padding: 15px; border-left: 4px solid #dc2626; margin: 20px 0; border-radius: 4px; font-size: 14px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>🌉 New Login Detected</h1>
+          </div>
+          <div class="content">
+            <h2>Hello ${name},</h2>
+            <p>We noticed a new login to your RedBridge ${userType} account.</p>
+            <p><strong>Time:</strong> ${time}</p>
+            
+            <div class="warning">
+              <strong>Not you?</strong> If you did not log in recently, please reset your password immediately to secure your account.
+            </div>
+            
+            <p>Stay safe!</p>
+          </div>
+          <div class="footer">
+            <p>RedBridge Blood Donation Platform</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    try {
+      await this.transporter.sendMail({
+        from: process.env.EMAIL_FROM || '"RedBridge" <noreply@redbridge.com>',
+        to: email,
+        subject: 'Security Alert: New Login to your RedBridge Account',
+        html: htmlTemplate
+      });
+
+      console.log('✅ Login notification sent to:', email);
+      return { success: true };
+    } catch (error) {
+      console.error('⚠️ Failed to send login notification (non-critical):', error.message);
+      return { success: false };
+    }
+  }
 }
 
 module.exports = new EmailService();

@@ -40,6 +40,7 @@ app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/donors', require('./routes/donorRoutes'));
 app.use('/api/needers', require('./routes/neederRoutes'));
 app.use('/api/match', require('./routes/matchRoutes'));
+app.use('/api/nearby', require('./routes/nearbyRoutes'));
 
 // Health check
 app.get('/api/health', (req, res) => {
