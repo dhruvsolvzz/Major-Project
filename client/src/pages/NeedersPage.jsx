@@ -7,9 +7,16 @@ const NeedersPage = () => {
   const [donors, setDonors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
+  const [userLocation, setUserLocation] = useState(null);
 
   useEffect(() => {
     fetchDonors();
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        (err) => console.warn('Location unavailable:', err)
+      );
+    }
   }, []);
 
   const fetchDonors = async () => {
@@ -24,12 +31,32 @@ const NeedersPage = () => {
     }
   };
 
+  const getDistance = (loc) => {
+    if (!userLocation || !loc?.coordinates) return null;
+    const R = 6371;
+    const dLat = (loc.coordinates[1] - userLocation.lat) * Math.PI / 180;
+    const dLon = (loc.coordinates[0] - userLocation.lng) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 +
+      Math.cos(userLocation.lat * Math.PI / 180) *
+      Math.cos(loc.coordinates[1] * Math.PI / 180) *
+      Math.sin(dLon / 2) ** 2;
+    return (R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))).toFixed(1);
+  };
+
+  const openDirections = (loc) => {
+    if (!loc?.coordinates) return;
+    const [lng, lat] = loc.coordinates;
+    const url = userLocation
+      ? `https://www.google.com/maps/dir/${userLocation.lat},${userLocation.lng}/${lat},${lng}`
+      : `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    window.open(url, '_blank');
+  };
+
   const bloodGroups = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
   const filteredDonors = filter === 'all' ? donors : donors.filter(d => d.bloodGroup === filter);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50 relative">
-      {/* Animated Background Elements */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-96 h-96 bg-gradient-to-br from-blue-400/30 to-purple-400/30 rounded-full blur-3xl" />
         <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-gradient-to-br from-orange-400/30 to-pink-400/30 rounded-full blur-3xl" />
@@ -37,9 +64,7 @@ const NeedersPage = () => {
 
       <Navbar />
       <div className="pt-20">
-
         <div className="max-w-7xl mx-auto px-4 py-12 relative z-10">
-          {/* Hero Section */}
           <div className="text-center mb-12">
             <div className="inline-flex items-center px-5 py-2.5 bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200/50 rounded-full mb-6 shadow-lg shadow-blue-500/10">
               <svg className="h-5 w-5 text-red-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
@@ -58,37 +83,25 @@ const NeedersPage = () => {
             <p className="text-xl text-slate-600">
               <span className="font-bold text-2xl bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">{donors.length}</span> generous donors ready to help you
             </p>
+            {userLocation && <p className="text-sm text-green-600 mt-2 font-medium">📍 Location detected — distances shown on cards</p>}
           </div>
 
-          {/* Blood Group Filter */}
           <div className="mb-12">
             <h3 className="text-center text-lg font-semibold text-slate-700 mb-4">Filter by Blood Group</h3>
             <div className="flex flex-wrap gap-3 justify-center">
-              <button
-                onClick={() => setFilter('all')}
-                className={`px-6 py-3 rounded-xl font-semibold transition-all shadow-lg ${filter === 'all'
-                  ? 'bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 text-white shadow-blue-500/30'
-                  : 'bg-white text-slate-700 hover:bg-gradient-to-r hover:from-blue-50 hover:to-purple-50 border-2 border-slate-200'
-                  }`}
-              >
+              <button onClick={() => setFilter('all')}
+                className={`px-6 py-3 rounded-xl font-semibold transition-all shadow-lg ${filter === 'all' ? 'bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 text-white shadow-blue-500/30' : 'bg-white text-slate-700 hover:bg-gradient-to-r hover:from-blue-50 hover:to-purple-50 border-2 border-slate-200'}`}>
                 All ({donors.length})
               </button>
               {bloodGroups.map((bg) => (
-                <button
-                  key={bg}
-                  onClick={() => setFilter(bg)}
-                  className={`px-6 py-3 rounded-xl font-semibold transition-all shadow-lg ${filter === bg
-                    ? 'bg-gradient-to-r from-red-500 via-rose-500 to-pink-500 text-white shadow-red-500/30'
-                    : 'bg-white text-slate-700 hover:bg-gradient-to-r hover:from-red-50 hover:to-pink-50 border-2 border-slate-200'
-                    }`}
-                >
+                <button key={bg} onClick={() => setFilter(bg)}
+                  className={`px-6 py-3 rounded-xl font-semibold transition-all shadow-lg ${filter === bg ? 'bg-gradient-to-r from-red-500 via-rose-500 to-pink-500 text-white shadow-red-500/30' : 'bg-white text-slate-700 hover:bg-gradient-to-r hover:from-red-50 hover:to-pink-50 border-2 border-slate-200'}`}>
                   {bg} ({donors.filter(d => d.bloodGroup === bg).length})
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Donors Grid */}
           {loading ? (
             <div className="flex flex-col justify-center items-center h-64">
               <div className="w-16 h-16 border-4 border-red-500 border-t-transparent rounded-full mb-4 animate-spin" />
@@ -102,65 +115,82 @@ const NeedersPage = () => {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredDonors.map((donor) => (
-                <div
-                  key={donor._id}
-                  className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl hover:shadow-2xl transition-all p-6 border-2 border-slate-200 hover:border-red-300 hover:scale-105 hover:-translate-y-2"
-                >
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <h3 className="text-xl font-bold text-slate-900">{donor.name}</h3>
-                      <p className="text-sm text-slate-600 flex items-center mt-1">
-                        <svg className="h-4 w-4 mr-1 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-                        </svg>
-                        {donor.age} years, {donor.gender}
-                      </p>
+              {filteredDonors.map((donor) => {
+                const dist = getDistance(donor.location);
+                return (
+                  <div key={donor._id}
+                    className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl hover:shadow-2xl transition-all p-6 border-2 border-slate-200 hover:border-red-300 hover:scale-105 hover:-translate-y-2 flex flex-col">
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <h3 className="text-xl font-bold text-slate-900">{donor.name}</h3>
+                        <p className="text-sm text-slate-600 flex items-center mt-1">
+                          <svg className="h-4 w-4 mr-1 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                          </svg>
+                          {donor.age} years, {donor.gender}
+                        </p>
+                      </div>
+                      <div className="bg-gradient-to-br from-red-500 via-rose-500 to-pink-500 text-white px-4 py-2 rounded-xl font-bold text-lg shadow-xl shadow-red-500/30">
+                        {donor.bloodGroup}
+                      </div>
                     </div>
-                    <div className="bg-gradient-to-br from-red-500 via-rose-500 to-pink-500 text-white px-4 py-2 rounded-xl font-bold text-lg shadow-xl shadow-red-500/30">
-                      {donor.bloodGroup}
-                    </div>
-                  </div>
 
-                  <div className="space-y-3 text-sm text-slate-600 mb-4">
-                    <div className="flex items-center bg-blue-50 p-3 rounded-lg">
-                      <svg className="h-5 w-5 mr-2 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
-                        <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
-                      </svg>
-                      <span className="font-medium">{donor.phone}</span>
-                    </div>
-                    <div className="flex items-start bg-purple-50 p-3 rounded-lg">
-                      <svg className="h-5 w-5 mr-2 mt-0.5 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
-                      </svg>
-                      <span className="line-clamp-2">{donor.address}</span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <a
-                      href={`tel:${donor.phone}`}
-                      className="w-full bg-gradient-to-r from-red-500 via-rose-500 to-pink-500 text-white py-3 rounded-xl font-semibold flex items-center justify-center shadow-xl shadow-red-500/30 transition-all hover:scale-105"
-                    >
-                      <svg className="h-5 w-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                        <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
-                      </svg>
-                      Call Donor Now
-                    </a>
-                    {donor.bloodReportFile && (
-                      <button
-                        onClick={() => window.open(`${API_URL}/donors/blood-report/${donor._id}`, '_blank')}
-                        className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white py-3 rounded-xl font-semibold flex items-center justify-center shadow-xl shadow-purple-500/30 transition-all hover:scale-105"
-                      >
-                        <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    <div className="space-y-3 text-sm text-slate-600 mb-4">
+                      <div className="flex items-center bg-blue-50 p-3 rounded-lg">
+                        <svg className="h-5 w-5 mr-2 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
                         </svg>
-                        View Blood Report
-                      </button>
-                    )}
+                        <span className="font-medium">{donor.phone}</span>
+                      </div>
+                      <div className="flex items-start bg-purple-50 p-3 rounded-lg">
+                        <svg className="h-5 w-5 mr-2 mt-0.5 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+                        </svg>
+                        <span className="line-clamp-2">{donor.address}</span>
+                      </div>
+                      {dist && (
+                        <div className="flex items-center bg-emerald-50 p-3 rounded-lg">
+                          <svg className="h-5 w-5 mr-2 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                          <span className="font-semibold text-emerald-700">{dist} km away</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="mt-auto space-y-2">
+                      <a href={`tel:${donor.phone}`}
+                        className="w-full bg-gradient-to-r from-red-500 via-rose-500 to-pink-500 text-white py-3 rounded-xl font-semibold flex items-center justify-center shadow-xl shadow-red-500/30 transition-all hover:scale-105">
+                        <svg className="h-5 w-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
+                        </svg>
+                        Call Donor Now
+                      </a>
+
+                      {donor.location?.coordinates && (
+                        <button onClick={() => openDirections(donor.location)}
+                          className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white py-3 rounded-xl font-semibold flex items-center justify-center shadow-xl shadow-emerald-500/30 transition-all hover:scale-105">
+                          <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                          </svg>
+                          {dist ? `Map · ${dist} km` : 'Get Directions'}
+                        </button>
+                      )}
+
+                      {donor.bloodReportFile && (
+                        <button onClick={() => window.open(`${API_URL}/donors/blood-report/${donor._id}`, '_blank')}
+                          className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white py-3 rounded-xl font-semibold flex items-center justify-center shadow-xl shadow-purple-500/30 transition-all hover:scale-105">
+                          <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          View Blood Report
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

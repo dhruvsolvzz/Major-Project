@@ -6,6 +6,7 @@ import StepIndicator from '../components/StepIndicator';
 import { LogoIcon } from '../components/Icons';
 import { FaUser, FaFileAlt, FaMapMarkerAlt, FaCheckCircle } from 'react-icons/fa';
 import API_URL from '../config/api';
+import LocationPicker from '../components/LocationPicker';
 
 const DonorRegistration = () => {
     const navigate = useNavigate();
@@ -554,53 +555,19 @@ const DonorRegistration = () => {
                                         <svg className="inline h-4 w-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
                                             <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                                         </svg>
-                                        Your location helps connect you with nearby needers quickly.
+                                        Type your address to get suggestions, or click "Use My Current Location".
                                     </p>
                                 </div>
 
-                                <div>
-                                    <label className="block text-sm font-semibold text-slate-700 mb-2">
-                                        Address *
-                                    </label>
-                                    <textarea
-                                        name="address"
-                                        value={formData.address}
-                                        onChange={handleChange}
-                                        rows="4"
-                                        className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-red-500 focus:ring-4 focus:ring-red-100 transition-all focus:scale-[1.01] hover:shadow-md"
-                                        placeholder="Auto-detected address (you can edit)"
-                                        required
-                                    />
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-semibold text-slate-700 mb-2">
-                                            Latitude
-                                        </label>
-                                        <input
-                                            type="text"
-                                            name="latitude"
-                                            value={formData.latitude}
-                                            onChange={handleChange}
-                                            className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl bg-slate-50"
-                                            readOnly
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-semibold text-slate-700 mb-2">
-                                            Longitude
-                                        </label>
-                                        <input
-                                            type="text"
-                                            name="longitude"
-                                            value={formData.longitude}
-                                            onChange={handleChange}
-                                            className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl bg-slate-50"
-                                            readOnly
-                                        />
-                                    </div>
-                                </div>
+                                <LocationPicker
+                                    address={formData.address}
+                                    latitude={formData.latitude}
+                                    longitude={formData.longitude}
+                                    required
+                                    onChange={({ address, latitude, longitude }) =>
+                                        setFormData(prev => ({ ...prev, address, latitude, longitude }))
+                                    }
+                                />
                             </div>
                         )}
 

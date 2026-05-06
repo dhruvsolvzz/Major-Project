@@ -208,8 +208,9 @@ router.post('/register', upload.fields([
   try {
     const { name, age, gender, phone, email, password, address, latitude, longitude, otp } = req.body;
 
-    console.log('📝 Registration request body:', { name, age, gender, phone, email, address, latitude, longitude, bloodGroupSource: req.body.bloodGroupSource, manualBloodGroup: req.body.manualBloodGroup });
-    console.log('📎 Files received:', req.files ? Object.keys(req.files) : 'none');
+    console.log('📝 Donor Registration request body:', req.body);
+    console.log('📎 Donor Files received:', req.files);
+    console.log('📎 Donor Blood report file:', req.files?.bloodReport?.[0]);
 
     if (!req.files || !req.files.aadhaar) {
       return res.status(400).json({ error: 'Aadhaar document is required' });
